@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import pdf_utils
 from fastapi.responses import FileResponse
+from typing import List
 
 app = FastAPI()
 
@@ -30,6 +31,22 @@ def get_db():
 @app.on_event("startup")
 def on_startup():
     database.init_db()
+    # デフォルトの問題タイプを作成
+    db = database.SessionLocal()
+    try:
+        default_types = [
+            {"name": "選択問題", "description": "選択肢から正解を選ぶ問題"},
+            {"name": "記述問題", "description": "文章で答える問題"},
+            {"name": "計算問題", "description": "計算をして答える問題"},
+            {"name": "図表問題", "description": "図や表を見て答える問題"},
+            {"name": "作文問題", "description": "作文を書く問題"}
+        ]
+        for type_data in default_types:
+            existing = crud.get_question_type_by_name(db, type_data["name"])
+            if not existing:
+                crud.create_question_type(db, schemas.QuestionTypeCreate(**type_data))
+    finally:
+        db.close()
 
 @app.post("/pdfs/", response_model=schemas.PDFOut)
 def create_pdf(pdf: schemas.PDFCreate, db: Session = Depends(get_db)):
@@ -213,3 +230,148 @@ def get_pdf(pdf_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
     
     return pdf
+
+# QuestionType エンドポイント
+@app.post("/question-types/", response_model=schemas.QuestionTypeOut)
+def create_question_type(question_type: schemas.QuestionTypeCreate, db: Session = Depends(get_db)):
+    return crud.create_question_type(db, question_type)
+
+@app.get("/question-types/", response_model=List[schemas.QuestionTypeOut])
+def get_question_types(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_question_types(db, skip=skip, limit=limit)
+
+@app.get("/question-types/{question_type_id}", response_model=schemas.QuestionTypeOut)
+def get_question_type(question_type_id: int, db: Session = Depends(get_db)):
+    question_type = crud.get_question_type_by_id(db, question_type_id)
+    if not question_type:
+        raise HTTPException(status_code=404, detail="問題タイプが見つかりません")
+    return question_type
+
+# Question エンドポイント
+@app.post("/questions/", response_model=schemas.QuestionOut)
+def create_question(question: schemas.QuestionCreate, db: Session = Depends(get_db)):
+    return crud.create_question(db, question)
+
+@app.get("/questions/", response_model=List[schemas.QuestionOut])
+def get_questions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_questions(db, skip=skip, limit=limit)
+
+@app.get("/questions/{question_id}", response_model=schemas.QuestionOut)
+def get_question(question_id: int, db: Session = Depends(get_db)):
+    question = crud.get_question_by_id(db, question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="問題が見つかりません")
+    return question
+
+@app.get("/pdfs/{pdf_id}/questions", response_model=List[schemas.QuestionOut])
+def get_questions_by_pdf(pdf_id: int, db: Session = Depends(get_db)):
+    """
+    PDFに関連する問題一覧を取得
+    """
+    pdf = crud.get_pdf_by_id(db, pdf_id)
+    if not pdf:
+        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+    return crud.get_questions_by_pdf_id(db, pdf_id)
+
+@app.put("/questions/{question_id}", response_model=schemas.QuestionOut)
+def update_question(question_id: int, question_update: dict, db: Session = Depends(get_db)):
+    """
+    問題を更新
+    """
+    question = crud.update_question(db, question_id, question_update)
+    if not question:
+        raise HTTPException(status_code=404, detail="問題が見つかりません")
+    return question
+
+@app.delete("/questions/{question_id}")
+def delete_question(question_id: int, db: Session = Depends(get_db)):
+    """
+    問題を削除
+    """
+    success = crud.delete_question(db, question_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="問題が見つかりません")
+    return {"message": "問題を削除しました"}
+
+# PDFから問題を抽出するエンドポイント
+@app.post("/pdfs/{pdf_id}/extract-questions")
+def extract_questions_from_pdf(pdf_id: int, db: Session = Depends(get_db)):
+    """
+    PDFから問題を自動抽出してデータベースに登録
+    """
+    # PDFを取得
+    pdf = crud.get_pdf_by_id(db, pdf_id)
+    if not pdf:
+        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+    
+    # PDFファイルのパス
+    file_path = os.path.join(UPLOAD_DIR, pdf.filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
+    
+    try:
+        # PDFから問題を抽出
+        extracted_questions = pdf_utils.extract_questions_from_pdf(file_path, pdf.subject)
+        
+        if not extracted_questions:
+            return {"message": "問題を抽出できませんでした", "extracted_count": 0}
+        
+        # デフォルトの問題タイプを取得
+        default_question_type = crud.get_question_type_by_name(db, "記述問題")
+        if not default_question_type:
+            # デフォルトタイプが存在しない場合は最初のタイプを使用
+            question_types = crud.get_question_types(db, limit=1)
+            if not question_types:
+                raise HTTPException(status_code=500, detail="問題タイプが設定されていません")
+            default_question_type = question_types[0]
+        
+        # 問題をデータベースに登録
+        created_questions = []
+        for extracted_q in extracted_questions:
+            question_data = schemas.QuestionCreate(
+                pdf_id=pdf_id,
+                question_type_id=default_question_type.id,
+                question_number=extracted_q['question_number'],
+                question_text=extracted_q['question_text'],
+                answer_text=extracted_q.get('answer_text'),
+                difficulty_level=extracted_q.get('difficulty_level'),
+                points=extracted_q.get('points'),
+                page_number=extracted_q.get('page_number'),
+                extracted_text=extracted_q.get('extracted_text')
+            )
+            created_question = crud.create_question(db, question_data)
+            created_questions.append(created_question)
+        
+        return {
+            "message": f"{len(created_questions)}個の問題を抽出・登録しました",
+            "extracted_count": len(created_questions),
+            "questions": [schemas.QuestionOut.from_orm(q) for q in created_questions]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"問題抽出に失敗しました: {str(e)}")
+
+@app.get("/pdfs/{pdf_id}/with-questions", response_model=schemas.PDFWithQuestions)
+def get_pdf_with_questions(pdf_id: int, db: Session = Depends(get_db)):
+    """
+    PDFとその関連問題を一緒に取得
+    """
+    pdf = crud.get_pdf_by_id(db, pdf_id)
+    if not pdf:
+        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+    
+    questions = crud.get_questions_by_pdf_id(db, pdf_id)
+    
+    # PDFWithQuestionsスキーマに変換
+    pdf_with_questions = schemas.PDFWithQuestions(
+        id=pdf.id,
+        url=pdf.url,
+        school=pdf.school,
+        subject=pdf.subject,
+        year=pdf.year,
+        filename=pdf.filename,
+        created_at=pdf.created_at,
+        questions=[schemas.QuestionOut.from_orm(q) for q in questions]
+    )
+    
+    return pdf_with_questions

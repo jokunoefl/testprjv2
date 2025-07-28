@@ -2,10 +2,30 @@ import httpx
 import os
 from urllib.parse import urlparse, urljoin
 import re
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 import requests
 from bs4 import BeautifulSoup
 import asyncio
+import pdfplumber
+import PyPDF2
+import nltk
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
+import logging
+
+# NLTKのデータをダウンロード（初回実行時）
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
+
+# ログ設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def download_pdf_from_url(url: str, upload_dir: str = "uploaded_pdfs") -> Tuple[str, Optional[str]]:
     """
@@ -16,23 +36,23 @@ async def download_pdf_from_url(url: str, upload_dir: str = "uploaded_pdfs") -> 
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             response.raise_for_status()
-            
+
             # Content-TypeがPDFかチェック
             content_type = response.headers.get("content-type", "").lower()
             if "pdf" not in content_type:
                 return None, "URLがPDFファイルではありません"
-            
+
             # ファイル名を決定
             filename = get_filename_from_url(url, response.headers)
-            filename = get_unique_filename(upload_dir, filename)
+            filename = get_unique_filename(upload_dir, filename) # Added for uniqueness
             file_path = os.path.join(upload_dir, filename)
-            
+
             # PDFを保存
             with open(file_path, "wb") as f:
                 f.write(response.content)
-            
+
             return filename, None
-            
+
     except httpx.HTTPError as e:
         return None, f"HTTPエラー: {str(e)}"
     except Exception as e:
@@ -48,16 +68,16 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             response.raise_for_status()
-            
+
         # BeautifulSoupでHTMLを解析
         soup = BeautifulSoup(response.content, 'html.parser')
-        
+
         # PDFリンクを抽出
         pdf_links = extract_pdf_links(soup, url)
-        
+
         if not pdf_links:
             return [], "PDFリンクが見つかりませんでした"
-        
+
         # PDFをダウンロード
         downloaded_files = []
         for pdf_url in pdf_links:
@@ -69,9 +89,9 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
                     print(f"PDFダウンロード失敗: {pdf_url} - {error}")
             except Exception as e:
                 print(f"PDFダウンロードエラー: {pdf_url} - {str(e)}")
-        
+
         return downloaded_files, None
-        
+
     except Exception as e:
         return [], f"クローリングエラー: {str(e)}"
 
@@ -80,19 +100,19 @@ def extract_pdf_links(soup: BeautifulSoup, base_url: str) -> List[str]:
     HTMLからPDFリンクを抽出
     """
     pdf_links = []
-    
+
     # aタグからPDFリンクを抽出
     for link in soup.find_all('a', href=True):
         href = link['href']
-        
+
         # 相対URLを絶対URLに変換
         if not href.startswith(('http://', 'https://')):
             href = urljoin(base_url, href)
-        
+
         # PDFファイルかチェック
         if is_pdf_link(href):
             pdf_links.append(href)
-    
+
     # 重複を除去
     return list(set(pdf_links))
 
@@ -103,11 +123,11 @@ def is_pdf_link(url: str) -> bool:
     # URLの拡張子をチェック
     if url.lower().endswith('.pdf'):
         return True
-    
+
     # URLにpdfという文字列が含まれているかチェック
     if 'pdf' in url.lower():
         return True
-    
+
     return False
 
 def get_filename_from_url(url: str, headers: dict) -> str:
@@ -118,7 +138,7 @@ def get_filename_from_url(url: str, headers: dict) -> str:
         match = re.search(r'filename="([^"]+)"', content_disposition)
         if match:
             return match.group(1)
-    
+
     # URLのパスからファイル名を取得
     parsed_url = urlparse(url)
     path = parsed_url.path
@@ -126,7 +146,7 @@ def get_filename_from_url(url: str, headers: dict) -> str:
         filename = os.path.basename(path)
         if filename:
             return filename
-    
+
     # デフォルトファイル名
     return f"downloaded_{hash(url) % 10000}.pdf"
 
@@ -135,11 +155,11 @@ def get_unique_filename(upload_dir: str, filename: str) -> str:
     base_name, extension = os.path.splitext(filename)
     counter = 1
     unique_filename = filename
-    
+
     while os.path.exists(os.path.join(upload_dir, unique_filename)):
         unique_filename = f"{base_name}_{counter}{extension}"
         counter += 1
-    
+
     return unique_filename
 
 def extract_metadata_from_url(url: str) -> dict:
@@ -149,14 +169,14 @@ def extract_metadata_from_url(url: str) -> dict:
     """
     # 例: https://example.com/schools/tokyo_high/2023/math.pdf
     # から学校名、年度、科目を抽出するロジック
-    
+
     # 基本的な実装（実際のURLパターンに応じて調整が必要）
     url_lower = url.lower()
-    
+
     # 年度の抽出（4桁の数字）
     year_match = re.search(r'20\d{2}', url)
     year = int(year_match.group()) if year_match else 2024
-    
+
     # 科目の抽出
     subjects = ['math', 'japanese', 'science', 'social']
     subject = 'unknown'
@@ -164,12 +184,180 @@ def extract_metadata_from_url(url: str) -> dict:
         if subj in url_lower:
             subject = subj
             break
-    
+
     # 学校名の抽出（実際のURLパターンに応じて調整）
     school = 'unknown_school'
-    
+
     return {
         'school': school,
         'subject': subject,
         'year': year
     }
+
+def extract_text_from_pdf(file_path: str) -> Tuple[str, Dict[int, str]]:
+    """
+    PDFからテキストを抽出する
+    戻り値: (全体テキスト, {ページ番号: ページテキスト})
+    """
+    try:
+        # pdfplumberを使用してテキストを抽出
+        text_by_page = {}
+        full_text = ""
+
+        with pdfplumber.open(file_path) as pdf:
+            for page_num, page in enumerate(pdf.pages, 1):
+                page_text = page.extract_text()
+                if page_text:
+                    text_by_page[page_num] = page_text
+                    full_text += f"\n--- ページ {page_num} ---\n{page_text}\n"
+
+        return full_text, text_by_page
+
+    except Exception as e:
+        logger.error(f"PDFテキスト抽出エラー: {str(e)}")
+        # PyPDF2でフォールバック
+        try:
+            text_by_page = {}
+            full_text = ""
+
+            with open(file_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                for page_num, page in enumerate(pdf_reader.pages, 1):
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_by_page[page_num] = page_text
+                        full_text += f"\n--- ページ {page_num} ---\n{page_text}\n"
+
+            return full_text, text_by_page
+
+        except Exception as e2:
+            logger.error(f"PyPDF2でもエラー: {str(e2)}")
+            return "", {}
+
+def analyze_questions(text: str, subject: str) -> List[Dict]:
+    """
+    テキストから問題を解析して抽出する
+    """
+    questions = []
+
+    # 問題番号のパターンを定義
+    question_patterns = [
+        r'(\d+)[．.、]\s*',  # 1. 1． 1、
+        r'問(\d+)[．.、]\s*',  # 問1. 問1．
+        r'\((\d+)\)\s*',  # (1) (2)
+        r'（(\d+)）\s*',  # （1） （2）
+    ]
+
+    # 科目別のキーワード
+    subject_keywords = {
+        'math': ['計算', '式', '答え', '解', '求める', '証明', '図形', '面積', '体積'],
+        'japanese': ['読解', '文章', '漢字', '文法', '読む', '書く', '表現'],
+        'science': ['実験', '観察', '結果', '理由', '説明', '図', '表'],
+        'social': ['歴史', '地理', '政治', '経済', '文化', '説明', '理由']
+    }
+
+    lines = text.split('\n')
+    current_question = None
+
+    for line_num, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
+
+        # 問題番号を検出
+        question_number = None
+        for pattern in question_patterns:
+            match = re.match(pattern, line)
+            if match:
+                question_number = match.group(1)
+                break
+
+        if question_number:
+            # 新しい問題の開始
+            if current_question:
+                questions.append(current_question)
+
+            current_question = {
+                'question_number': question_number,
+                'question_text': line,
+                'page_number': None,  # 後で設定
+                'extracted_text': line,
+                'difficulty_level': None,
+                'points': None
+            }
+        elif current_question:
+            # 既存の問題に追加
+            current_question['question_text'] += '\n' + line
+            current_question['extracted_text'] += '\n' + line
+
+    # 最後の問題を追加
+    if current_question:
+        questions.append(current_question)
+
+    # 問題の詳細分析
+    for question in questions:
+        question_text = question['question_text'].lower()
+
+        # 難易度の推定
+        difficulty_keywords = {
+            1: ['簡単', '基礎', '基本'],
+            2: ['標準', '普通'],
+            3: ['応用', '発展'],
+            4: ['難問', '高度'],
+            5: ['超難問', '最難関']
+        }
+
+        for level, keywords in difficulty_keywords.items():
+            if any(keyword in question_text for keyword in keywords):
+                question['difficulty_level'] = level
+                break
+
+        if question['difficulty_level'] is None:
+            question['difficulty_level'] = 2  # デフォルト
+
+        # 配点の推定
+        point_patterns = [
+            r'(\d+)点',
+            r'配点(\d+)',
+            r'\((\d+)点\)'
+        ]
+
+        for pattern in point_patterns:
+            match = re.search(pattern, question_text)
+            if match:
+                question['points'] = float(match.group(1))
+                break
+
+        if question['points'] is None:
+            question['points'] = 5.0  # デフォルト
+
+    return questions
+
+def extract_questions_from_pdf(file_path: str, subject: str) -> List[Dict]:
+    """
+    PDFから問題を抽出するメイン関数
+    """
+    try:
+        # テキストを抽出
+        full_text, text_by_page = extract_text_from_pdf(file_path)
+
+        if not full_text:
+            logger.warning(f"PDFからテキストを抽出できませんでした: {file_path}")
+            return []
+
+        # 問題を解析
+        questions = analyze_questions(full_text, subject)
+
+        # ページ番号を設定
+        for question in questions:
+            # 問題番号からページ番号を推定（簡易版）
+            question_num = int(question['question_number'])
+            estimated_page = min((question_num - 1) // 5 + 1, len(text_by_page))
+            question['page_number'] = estimated_page
+
+        logger.info(f"PDFから {len(questions)} 個の問題を抽出しました: {file_path}")
+        return questions
+
+    except Exception as e:
+        logger.error(f"問題抽出エラー: {str(e)}")
+        return []
