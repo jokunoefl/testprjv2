@@ -13,19 +13,16 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
 import logging
 
-# NLTKのデータをダウンロード（初回実行時）
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
-
-# ログ設定
+# ロガー設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# NLTKデータのダウンロード（初回のみ）
+try:
+    nltk.download('punkt', quiet=True)
+    nltk.download('stopwords', quiet=True)
+except:
+    pass  # 既にダウンロード済みの場合
 
 async def download_pdf_from_url(url: str, upload_dir: str = "uploaded_pdfs") -> Tuple[str, Optional[str]]:
     """
@@ -33,29 +30,53 @@ async def download_pdf_from_url(url: str, upload_dir: str = "uploaded_pdfs") -> 
     戻り値: (ファイル名, エラーメッセージ)
     """
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        logger.info(f"PDFダウンロード開始: {url}")
+        
+        # タイムアウト設定付きでダウンロード
+        timeout = httpx.Timeout(60.0, connect=15.0, read=45.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.get(url, follow_redirects=True)
+                response.raise_for_status()
+                logger.info(f"PDFダウンロード成功: {len(response.content)} bytes")
+            except httpx.TimeoutException:
+                return None, "PDFダウンロードがタイムアウトしました"
+            except httpx.HTTPStatusError as e:
+                return None, f"HTTPエラー: {e.response.status_code} - {e.response.reason_phrase}"
+            except httpx.RequestError as e:
+                return None, f"リクエストエラー: {str(e)}"
 
             # Content-TypeがPDFかチェック
             content_type = response.headers.get("content-type", "").lower()
             if "pdf" not in content_type:
-                return None, "URLがPDFファイルではありません"
+                logger.warning(f"Content-TypeがPDFではありません: {content_type}")
+                # Content-TypeがPDFでなくても、URLに.pdfが含まれていればダウンロードを試行
+                if not url.lower().endswith('.pdf'):
+                    return None, "URLがPDFファイルではありません"
+
+            # ファイルサイズチェック
+            content_length = response.headers.get("content-length")
+            if content_length:
+                size_mb = int(content_length) / (1024 * 1024)
+                if size_mb > 50:  # 50MB以上は警告
+                    logger.warning(f"大きなファイルです: {size_mb:.1f}MB")
 
             # ファイル名を決定
             filename = get_filename_from_url(url, response.headers)
-            filename = get_unique_filename(upload_dir, filename) # Added for uniqueness
+            filename = get_unique_filename(upload_dir, filename)
             file_path = os.path.join(upload_dir, filename)
 
             # PDFを保存
-            with open(file_path, "wb") as f:
-                f.write(response.content)
+            try:
+                with open(file_path, "wb") as f:
+                    f.write(response.content)
+                logger.info(f"PDF保存完了: {filename}")
+                return filename, None
+            except IOError as e:
+                return None, f"ファイル保存エラー: {str(e)}"
 
-            return filename, None
-
-    except httpx.HTTPError as e:
-        return None, f"HTTPエラー: {str(e)}"
     except Exception as e:
+        logger.error(f"PDFダウンロードエラー: {url} - {str(e)}")
         return None, f"ダウンロードエラー: {str(e)}"
 
 async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -> Tuple[List[str], Optional[str]]:
@@ -64,35 +85,73 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
     戻り値: (ダウンロードされたファイル名のリスト, エラーメッセージ)
     """
     try:
-        # サイトのHTMLを取得
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        logger.info(f"クローリング開始: {url}")
+        
+        # タイムアウト設定付きでサイトのHTMLを取得
+        timeout = httpx.Timeout(30.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.get(url, follow_redirects=True)
+                response.raise_for_status()
+                logger.info(f"HTML取得成功: {len(response.content)} bytes")
+            except httpx.TimeoutException:
+                return [], "サイトへの接続がタイムアウトしました"
+            except httpx.HTTPStatusError as e:
+                return [], f"HTTPエラー: {e.response.status_code} - {e.response.reason_phrase}"
+            except httpx.RequestError as e:
+                return [], f"リクエストエラー: {str(e)}"
 
         # BeautifulSoupでHTMLを解析
-        soup = BeautifulSoup(response.content, 'html.parser')
+        try:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            logger.info("HTML解析完了")
+        except Exception as e:
+            return [], f"HTML解析エラー: {str(e)}"
 
         # PDFリンクを抽出
         pdf_links = extract_pdf_links(soup, url)
+        logger.info(f"PDFリンク発見: {len(pdf_links)}個")
 
         if not pdf_links:
             return [], "PDFリンクが見つかりませんでした"
 
-        # PDFをダウンロード
+        # PDFをダウンロード（並行処理で高速化）
         downloaded_files = []
-        for pdf_url in pdf_links:
-            try:
-                filename, error = await download_pdf_from_url(pdf_url, upload_dir)
-                if filename:
-                    downloaded_files.append(filename)
-                else:
-                    print(f"PDFダウンロード失敗: {pdf_url} - {error}")
-            except Exception as e:
-                print(f"PDFダウンロードエラー: {pdf_url} - {str(e)}")
+        failed_downloads = []
+        
+        # 同時ダウンロード数を制限（サーバー負荷軽減）
+        semaphore = asyncio.Semaphore(3)
+        
+        async def download_single_pdf(pdf_url: str):
+            async with semaphore:
+                try:
+                    filename, error = await download_pdf_from_url(pdf_url, upload_dir)
+                    if filename:
+                        logger.info(f"PDFダウンロード成功: {filename}")
+                        return filename
+                    else:
+                        logger.warning(f"PDFダウンロード失敗: {pdf_url} - {error}")
+                        return None
+                except Exception as e:
+                    logger.error(f"PDFダウンロードエラー: {pdf_url} - {str(e)}")
+                    return None
 
+        # 並行ダウンロード実行
+        tasks = [download_single_pdf(pdf_url) for pdf_url in pdf_links]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 結果を処理
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"ダウンロードタスクエラー: {str(result)}")
+            elif result is not None:
+                downloaded_files.append(result)
+
+        logger.info(f"ダウンロード完了: {len(downloaded_files)}/{len(pdf_links)}個成功")
         return downloaded_files, None
 
     except Exception as e:
+        logger.error(f"クローリングエラー: {str(e)}")
         return [], f"クローリングエラー: {str(e)}"
 
 def extract_pdf_links(soup: BeautifulSoup, base_url: str) -> List[str]:

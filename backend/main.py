@@ -145,17 +145,24 @@ async def crawl_pdfs_from_url(
     WebサイトをクローリングしてPDFリンクを抽出し、ダウンロードする
     """
     try:
+        print(f"クローリング開始: {url}")
+        
         # サイトをクローリングしてPDFをダウンロード
         downloaded_files, error = await pdf_utils.crawl_and_download_pdfs(url, UPLOAD_DIR)
         
         if error:
+            print(f"クローリングエラー: {error}")
             raise HTTPException(status_code=400, detail=error)
+        
+        print(f"ダウンロード完了: {len(downloaded_files)}個のファイル")
         
         if not downloaded_files:
             raise HTTPException(status_code=404, detail="PDFファイルが見つかりませんでした")
         
         # ダウンロードされたPDFをDBに登録
         saved_pdfs = []
+        failed_saves = []
+        
         for filename in downloaded_files:
             try:
                 # メタデータを抽出（指定されていない場合）
@@ -179,6 +186,7 @@ async def crawl_pdfs_from_url(
                 )
                 saved_pdf = crud.create_pdf(db, pdf_in)
                 saved_pdfs.append(saved_pdf)
+                print(f"DB保存成功: {filename}")
                 
             except ValueError as e:
                 # ファイル名重複エラーの場合、ファイルを削除
@@ -186,23 +194,36 @@ async def crawl_pdfs_from_url(
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 print(f"ファイル名重複: {filename} - {str(e)}")
+                failed_saves.append(f"重複: {filename}")
             except Exception as e:
                 # その他のエラーの場合も、ファイルを削除
                 file_path = os.path.join(UPLOAD_DIR, filename)
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 print(f"DB保存エラー: {filename} - {str(e)}")
+                failed_saves.append(f"保存失敗: {filename}")
+        
+        print(f"保存完了: {len(saved_pdfs)}/{len(downloaded_files)}個成功")
+        
+        # 結果メッセージを詳細化
+        message = f"{len(saved_pdfs)}個のPDFファイルをダウンロード・保存しました"
+        if failed_saves:
+            message += f" (失敗: {len(failed_saves)}個)"
         
         return {
-            "message": f"{len(saved_pdfs)}個のPDFファイルをダウンロード・保存しました",
+            "message": message,
             "downloaded_files": [pdf.filename for pdf in saved_pdfs],
             "total_found": len(downloaded_files),
-            "successfully_saved": len(saved_pdfs)
+            "successfully_saved": len(saved_pdfs),
+            "failed_saves": failed_saves
         }
         
     except HTTPException:
         raise
     except Exception as e:
+        print(f"予期しないエラー: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"クローリングに失敗しました: {str(e)}")
 
 @app.get("/pdfs/{pdf_id}/view")
