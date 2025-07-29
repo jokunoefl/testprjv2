@@ -107,6 +107,7 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
                 response = await client.get(url, follow_redirects=True)
                 response.raise_for_status()
                 logger.info(f"HTML取得成功: {len(response.content)} bytes")
+                logger.info(f"Content-Type: {response.headers.get('content-type', 'unknown')}")
             except httpx.TimeoutException:
                 error_msg = "サイトへの接続がタイムアウトしました。サイトが応答していないか、ネットワーク接続に問題があります。"
                 logger.error(f"タイムアウトエラー: {url}")
@@ -124,6 +125,7 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
         try:
             soup = BeautifulSoup(response.content, 'html.parser')
             logger.info("HTML解析完了")
+            logger.info(f"ページタイトル: {soup.title.string if soup.title else 'タイトルなし'}")
         except Exception as e:
             error_msg = f"HTML解析エラー: {str(e)}。サイトの構造が予期しない形式です。"
             logger.error(f"HTML解析エラー: {url} - {str(e)}")
@@ -136,6 +138,11 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
         if not pdf_links:
             error_msg = "PDFリンクが見つかりませんでした。このサイトにはPDFファイルが含まれていないか、リンクの形式が異なります。"
             logger.warning(f"PDFリンク未発見: {url}")
+            logger.info("ページ内のリンクを確認中...")
+            all_links = soup.find_all('a', href=True)
+            logger.info(f"ページ内の総リンク数: {len(all_links)}")
+            for i, link in enumerate(all_links[:10]):  # 最初の10個のリンクをログ出力
+                logger.info(f"  リンク {i+1}: {link.get('href')} - テキスト: {link.get_text()[:50]}")
             return [], error_msg
 
         # PDFをダウンロード（並行処理で高速化）
@@ -232,6 +239,41 @@ def extract_pdf_links(soup: BeautifulSoup, base_url: str) -> List[str]:
     pdf_urls = re.findall(r'https?://[^\s<>"\']*\.pdf[^\s<>"\']*', page_text, re.IGNORECASE)
     pdf_links.extend(pdf_urls)
 
+    # より広範囲なPDFリンク検索
+    # 1. リンクテキストに「PDF」が含まれる場合
+    for link in soup.find_all('a', href=True):
+        link_text = link.get_text().lower()
+        if 'pdf' in link_text or 'ダウンロード' in link_text or 'download' in link_text:
+            href = link['href']
+            if not href.startswith(('http://', 'https://')):
+                href = urljoin(base_url, href)
+            if href not in pdf_links:
+                pdf_links.append(href)
+
+    # 2. 画像のalt属性やtitle属性にPDFが含まれる場合
+    for img in soup.find_all('img'):
+        alt_text = img.get('alt', '').lower()
+        title_text = img.get('title', '').lower()
+        if 'pdf' in alt_text or 'pdf' in title_text:
+            # 画像の親要素にリンクがあるかチェック
+            parent_link = img.find_parent('a')
+            if parent_link and parent_link.get('href'):
+                href = parent_link['href']
+                if not href.startswith(('http://', 'https://')):
+                    href = urljoin(base_url, href)
+                if href not in pdf_links:
+                    pdf_links.append(href)
+
+    # 3. 特定のクラス名やIDを持つ要素からPDFリンクを検索
+    for element in soup.find_all(['div', 'span', 'p'], class_=re.compile(r'pdf|download|file', re.IGNORECASE)):
+        links = element.find_all('a', href=True)
+        for link in links:
+            href = link['href']
+            if not href.startswith(('http://', 'https://')):
+                href = urljoin(base_url, href)
+            if href not in pdf_links:
+                pdf_links.append(href)
+
     # 重複を除去してソート
     unique_links = list(set(pdf_links))
     unique_links.sort()
@@ -261,12 +303,29 @@ def is_pdf_link(url: str) -> bool:
         exclude_patterns = [
             'pdf-viewer', 'pdf-reader', 'pdf-download', 'pdf-upload',
             'pdf-converter', 'pdf-editor', 'pdf-tools', 'pdf-software',
-            'pdf-online', 'pdf-free', 'pdf-app', 'pdf-apps'
+            'pdf-online', 'pdf-free', 'pdf-app', 'pdf-apps',
+            'pdf-print', 'pdf-merge', 'pdf-split', 'pdf-compress'
         ]
         for pattern in exclude_patterns:
             if pattern in url_lower:
                 return False
         return True
+    
+    # 特定のパターンでPDFファイルを識別
+    pdf_patterns = [
+        r'/uploads/.*\.pdf',
+        r'/files/.*\.pdf',
+        r'/documents/.*\.pdf',
+        r'/downloads/.*\.pdf',
+        r'/past.*\.pdf',
+        r'/exam.*\.pdf',
+        r'/test.*\.pdf',
+        r'/question.*\.pdf'
+    ]
+    
+    for pattern in pdf_patterns:
+        if re.search(pattern, url_lower):
+            return True
     
     # Content-TypeがPDFの場合の判定（実際のダウンロード時にチェック）
     # ここでは基本的な判定のみ行う
@@ -310,32 +369,58 @@ def extract_metadata_from_url(url: str) -> dict:
     URLから学校名、科目、年度などのメタデータを抽出
     （実際の実装では、URLのパターンに応じて抽出ロジックを実装）
     """
-    # 例: https://example.com/schools/tokyo_high/2023/math.pdf
-    # から学校名、年度、科目を抽出するロジック
+    try:
+        logger.info(f"メタデータ抽出開始: {url}")
+        
+        # 例: https://example.com/schools/tokyo_high/2023/math.pdf
+        # から学校名、年度、科目を抽出するロジック
 
-    # 基本的な実装（実際のURLパターンに応じて調整が必要）
-    url_lower = url.lower()
+        # 基本的な実装（実際のURLパターンに応じて調整が必要）
+        url_lower = url.lower()
 
-    # 年度の抽出（4桁の数字）
-    year_match = re.search(r'20\d{2}', url)
-    year = int(year_match.group()) if year_match else 2024
+        # 年度の抽出（4桁の数字）
+        year_match = re.search(r'20\d{2}', url)
+        year = int(year_match.group()) if year_match else 2024
+        logger.info(f"抽出された年度: {year}")
 
-    # 科目の抽出
-    subjects = ['math', 'japanese', 'science', 'social']
-    subject = 'unknown'
-    for subj in subjects:
-        if subj in url_lower:
-            subject = subj
-            break
+        # 科目の抽出
+        subjects = ['math', 'japanese', 'science', 'social']
+        subject = 'unknown'
+        for subj in subjects:
+            if subj in url_lower:
+                subject = subj
+                break
+        logger.info(f"抽出された科目: {subject}")
 
-    # 学校名の抽出（実際のURLパターンに応じて調整）
-    school = 'unknown_school'
+        # 学校名の抽出（実際のURLパターンに応じて調整）
+        school = 'unknown_school'
+        
+        # URLから学校名を抽出する試行
+        url_parts = url.split('/')
+        for part in url_parts:
+            if 'school' in part.lower() or 'high' in part.lower() or 'middle' in part.lower():
+                school = part.replace('-', '_').replace('.', '_')
+                break
+        
+        logger.info(f"抽出された学校名: {school}")
 
-    return {
-        'school': school,
-        'subject': subject,
-        'year': year
-    }
+        result = {
+            'school': school,
+            'subject': subject,
+            'year': year
+        }
+        
+        logger.info(f"メタデータ抽出完了: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"メタデータ抽出エラー: {str(e)}")
+        # エラーの場合はデフォルト値を返す
+        return {
+            'school': 'unknown_school',
+            'subject': 'unknown',
+            'year': 2024
+        }
 
 def extract_text_from_pdf_with_ocr(file_path: str) -> Tuple[str, Dict[int, str]]:
     """

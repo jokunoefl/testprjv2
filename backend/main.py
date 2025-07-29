@@ -19,7 +19,6 @@ app.add_middleware(
 )
 
 UPLOAD_DIR = "uploaded_pdfs"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 def get_db():
     db = database.SessionLocal()
@@ -30,6 +29,10 @@ def get_db():
 
 @app.on_event("startup")
 def on_startup():
+    # アップロードディレクトリを作成
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    print(f"アップロードディレクトリ確認: {UPLOAD_DIR}")
+    
     database.init_db()
     # デフォルトの問題タイプを作成
     db = database.SessionLocal()
@@ -65,12 +68,24 @@ def upload_pdf(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    print(f"PDFアップロード開始: {file.filename}")
+    print(f"URL: {url}, 学校: {school}, 科目: {subject}, 年度: {year}")
+    
     filename = file.filename
     file_path = os.path.join(UPLOAD_DIR, filename)
     
     try:
+        # ファイルサイズをチェック
+        file_content = file.file.read()
+        file_size = len(file_content)
+        print(f"ファイルサイズ: {file_size} bytes")
+        
+        # ファイルを保存
         with open(file_path, "wb") as f:
-            f.write(file.file.read())
+            f.write(file_content)
+        print(f"ファイル保存完了: {file_path}")
+        
+        # DBに保存
         pdf_in = schemas.PDFCreate(
             url=url,
             school=school,
@@ -78,17 +93,23 @@ def upload_pdf(
             year=year,
             filename=filename
         )
-        return crud.create_pdf(db, pdf_in)
+        result = crud.create_pdf(db, pdf_in)
+        print(f"DB保存成功: {filename}")
+        return result
     except ValueError as e:
         # ファイル名重複エラーの場合、アップロードされたファイルを削除
+        print(f"ファイル名重複エラー: {str(e)}")
         if os.path.exists(file_path):
             os.remove(file_path)
+            print(f"重複ファイル削除: {file_path}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         # その他のエラーの場合も、アップロードされたファイルを削除
+        print(f"アップロードエラー: {str(e)}")
         if os.path.exists(file_path):
             os.remove(file_path)
-        raise HTTPException(status_code=500, detail="アップロードに失敗しました")
+            print(f"エラーファイル削除: {file_path}")
+        raise HTTPException(status_code=500, detail=f"アップロードに失敗しました: {str(e)}")
 
 @app.post("/download_pdf/", response_model=schemas.PDFOut)
 async def download_pdf_from_url_endpoint(
@@ -98,17 +119,25 @@ async def download_pdf_from_url_endpoint(
     year: int = Form(None),
     db: Session = Depends(get_db)
 ):
+    print(f"PDFダウンロード開始: {url}")
+    print(f"メタデータ: 学校={school}, 科目={subject}, 年度={year}")
+    
     # PDFをダウンロード
     filename, error = await pdf_utils.download_pdf_from_url(url, UPLOAD_DIR)
     if error:
+        print(f"ダウンロードエラー: {error}")
         raise HTTPException(status_code=400, detail=error)
+    
+    print(f"ダウンロード成功: {filename}")
     
     # メタデータを抽出（指定されていない場合）
     if not school or not subject or not year:
+        print("メタデータを自動抽出中...")
         metadata = pdf_utils.extract_metadata_from_url(url)
         school = school or metadata['school']
         subject = subject or metadata['subject']
         year = year or metadata['year']
+        print(f"抽出されたメタデータ: 学校={school}, 科目={subject}, 年度={year}")
     
     try:
         # DBに保存
@@ -119,19 +148,25 @@ async def download_pdf_from_url_endpoint(
             year=year,
             filename=filename
         )
-        return crud.create_pdf(db, pdf_in)
+        result = crud.create_pdf(db, pdf_in)
+        print(f"DB保存成功: {filename}")
+        return result
     except ValueError as e:
         # ファイル名重複エラーの場合、ダウンロードされたファイルを削除
+        print(f"ファイル名重複エラー: {str(e)}")
         file_path = os.path.join(UPLOAD_DIR, filename)
         if os.path.exists(file_path):
             os.remove(file_path)
+            print(f"重複ファイル削除: {file_path}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         # その他のエラーの場合も、ダウンロードされたファイルを削除
+        print(f"DB保存エラー: {str(e)}")
         file_path = os.path.join(UPLOAD_DIR, filename)
         if os.path.exists(file_path):
             os.remove(file_path)
-        raise HTTPException(status_code=500, detail="ダウンロードに失敗しました")
+            print(f"エラーファイル削除: {file_path}")
+        raise HTTPException(status_code=500, detail=f"ダウンロードに失敗しました: {str(e)}")
 
 @app.post("/crawl_pdfs/")
 async def crawl_pdfs_from_url(
