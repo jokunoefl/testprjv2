@@ -95,33 +95,48 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
     try:
         logger.info(f"クローリング開始: {url}")
         
+        # URLの形式をチェック
+        if not url.startswith(('http://', 'https://')):
+            return [], "URLは http:// または https:// で始まる必要があります"
+        
         # タイムアウト設定付きでサイトのHTMLを取得
         timeout = httpx.Timeout(30.0, connect=10.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
             try:
+                logger.info(f"サイトに接続中: {url}")
                 response = await client.get(url, follow_redirects=True)
                 response.raise_for_status()
                 logger.info(f"HTML取得成功: {len(response.content)} bytes")
             except httpx.TimeoutException:
-                return [], "サイトへの接続がタイムアウトしました"
+                error_msg = "サイトへの接続がタイムアウトしました。サイトが応答していないか、ネットワーク接続に問題があります。"
+                logger.error(f"タイムアウトエラー: {url}")
+                return [], error_msg
             except httpx.HTTPStatusError as e:
-                return [], f"HTTPエラー: {e.response.status_code} - {e.response.reason_phrase}"
+                error_msg = f"HTTPエラー {e.response.status_code}: {e.response.reason_phrase}。サイトが利用できないか、アクセスが制限されています。"
+                logger.error(f"HTTPエラー: {url} - {e.response.status_code} {e.response.reason_phrase}")
+                return [], error_msg
             except httpx.RequestError as e:
-                return [], f"リクエストエラー: {str(e)}"
+                error_msg = f"リクエストエラー: {str(e)}。URLが正しいか、ネットワーク接続を確認してください。"
+                logger.error(f"リクエストエラー: {url} - {str(e)}")
+                return [], error_msg
 
         # BeautifulSoupでHTMLを解析
         try:
             soup = BeautifulSoup(response.content, 'html.parser')
             logger.info("HTML解析完了")
         except Exception as e:
-            return [], f"HTML解析エラー: {str(e)}"
+            error_msg = f"HTML解析エラー: {str(e)}。サイトの構造が予期しない形式です。"
+            logger.error(f"HTML解析エラー: {url} - {str(e)}")
+            return [], error_msg
 
         # PDFリンクを抽出
         pdf_links = extract_pdf_links(soup, url)
         logger.info(f"PDFリンク発見: {len(pdf_links)}個")
 
         if not pdf_links:
-            return [], "PDFリンクが見つかりませんでした"
+            error_msg = "PDFリンクが見つかりませんでした。このサイトにはPDFファイルが含まれていないか、リンクの形式が異なります。"
+            logger.warning(f"PDFリンク未発見: {url}")
+            return [], error_msg
 
         # PDFをダウンロード（並行処理で高速化）
         downloaded_files = []
@@ -139,12 +154,15 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
                         return filename
                     else:
                         logger.warning(f"PDFダウンロード失敗: {pdf_url} - {error}")
+                        failed_downloads.append(f"{pdf_url}: {error}")
                         return None
                 except Exception as e:
                     logger.error(f"PDFダウンロードエラー: {pdf_url} - {str(e)}")
+                    failed_downloads.append(f"{pdf_url}: {str(e)}")
                     return None
 
         # 並行ダウンロード実行
+        logger.info(f"PDFダウンロード開始: {len(pdf_links)}個のファイル")
         tasks = [download_single_pdf(pdf_url) for pdf_url in pdf_links]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -152,15 +170,33 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
         for result in results:
             if isinstance(result, Exception):
                 logger.error(f"ダウンロードタスクエラー: {str(result)}")
+                failed_downloads.append(f"タスクエラー: {str(result)}")
             elif result is not None:
                 downloaded_files.append(result)
 
         logger.info(f"ダウンロード完了: {len(downloaded_files)}/{len(pdf_links)}個成功")
-        return downloaded_files, None
+        
+        # エラーメッセージの詳細化
+        if downloaded_files:
+            if failed_downloads:
+                error_msg = f"一部のPDFのダウンロードに失敗しました。成功: {len(downloaded_files)}個、失敗: {len(failed_downloads)}個"
+                logger.warning(f"部分的なダウンロード失敗: {error_msg}")
+            else:
+                error_msg = None
+            return downloaded_files, error_msg
+        else:
+            error_msg = f"すべてのPDFのダウンロードに失敗しました。詳細: {', '.join(failed_downloads[:3])}"
+            if len(failed_downloads) > 3:
+                error_msg += f" 他{len(failed_downloads) - 3}個"
+            logger.error(f"全ダウンロード失敗: {error_msg}")
+            return [], error_msg
 
     except Exception as e:
-        logger.error(f"クローリングエラー: {str(e)}")
-        return [], f"クローリングエラー: {str(e)}"
+        error_msg = f"予期しないクローリングエラー: {str(e)}。システム管理者に連絡してください。"
+        logger.error(f"予期しないクローリングエラー: {url} - {str(e)}")
+        import traceback
+        logger.error(f"トレースバック: {traceback.format_exc()}")
+        return [], error_msg
 
 def extract_pdf_links(soup: BeautifulSoup, base_url: str) -> List[str]:
     """
@@ -180,21 +216,61 @@ def extract_pdf_links(soup: BeautifulSoup, base_url: str) -> List[str]:
         if is_pdf_link(href):
             pdf_links.append(href)
 
-    # 重複を除去
-    return list(set(pdf_links))
+    # その他の要素からもPDFリンクを検索（script、meta、linkタグなど）
+    for script in soup.find_all('script'):
+        if script.string:
+            # JavaScript内のPDFリンクを検索
+            pdf_urls = re.findall(r'["\']([^"\']*\.pdf[^"\']*)["\']', script.string, re.IGNORECASE)
+            for pdf_url in pdf_urls:
+                if not pdf_url.startswith(('http://', 'https://')):
+                    pdf_url = urljoin(base_url, pdf_url)
+                if is_pdf_link(pdf_url):
+                    pdf_links.append(pdf_url)
+
+    # ページ内のテキストからPDFリンクを検索
+    page_text = soup.get_text()
+    pdf_urls = re.findall(r'https?://[^\s<>"\']*\.pdf[^\s<>"\']*', page_text, re.IGNORECASE)
+    pdf_links.extend(pdf_urls)
+
+    # 重複を除去してソート
+    unique_links = list(set(pdf_links))
+    unique_links.sort()
+    
+    logger.info(f"PDFリンク抽出結果: {len(unique_links)}個のユニークなリンク")
+    for i, link in enumerate(unique_links[:5]):  # 最初の5個をログ出力
+        logger.info(f"  リンク {i+1}: {link}")
+    if len(unique_links) > 5:
+        logger.info(f"  ... 他 {len(unique_links) - 5}個のリンク")
+    
+    return unique_links
 
 def is_pdf_link(url: str) -> bool:
     """
     URLがPDFファイルかどうかを判定
     """
+    # URLの正規化
+    url_lower = url.lower()
+    
     # URLの拡張子をチェック
-    if url.lower().endswith('.pdf'):
+    if url_lower.endswith('.pdf'):
         return True
-
+    
     # URLにpdfという文字列が含まれているかチェック
-    if 'pdf' in url.lower():
+    if 'pdf' in url_lower:
+        # ただし、PDFの説明ページなどは除外
+        exclude_patterns = [
+            'pdf-viewer', 'pdf-reader', 'pdf-download', 'pdf-upload',
+            'pdf-converter', 'pdf-editor', 'pdf-tools', 'pdf-software',
+            'pdf-online', 'pdf-free', 'pdf-app', 'pdf-apps'
+        ]
+        for pattern in exclude_patterns:
+            if pattern in url_lower:
+                return False
         return True
-
+    
+    # Content-TypeがPDFの場合の判定（実際のダウンロード時にチェック）
+    # ここでは基本的な判定のみ行う
+    
     return False
 
 def get_filename_from_url(url: str, headers: dict) -> str:
