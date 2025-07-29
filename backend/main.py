@@ -314,77 +314,14 @@ def delete_question(question_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="問題が見つかりません")
     return {"message": "問題を削除しました"}
 
-# PDFから問題を抽出するエンドポイント
-@app.post("/pdfs/{pdf_id}/extract-questions")
-def extract_questions_from_pdf(pdf_id: int, db: Session = Depends(get_db)):
-    """
-    PDFから問題を自動抽出してデータベースに登録
-    """
-    # PDFを取得
-    pdf = crud.get_pdf_by_id(db, pdf_id)
-    if not pdf:
-        raise HTTPException(status_code=404, detail="PDFが見つかりません")
-    
-    # PDFファイルのパス
-    file_path = os.path.join(UPLOAD_DIR, pdf.filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
-    
-    try:
-        # PDFから問題を抽出
-        extracted_questions = pdf_utils.extract_questions_from_pdf(file_path, pdf.subject)
-        
-        if not extracted_questions:
-            return {"message": "問題を抽出できませんでした", "extracted_count": 0}
-        
-        # デフォルトの問題タイプを取得
-        default_question_type = crud.get_question_type_by_name(db, "記述問題")
-        if not default_question_type:
-            # デフォルトタイプが存在しない場合は最初のタイプを使用
-            question_types = crud.get_question_types(db, limit=1)
-            if not question_types:
-                raise HTTPException(status_code=500, detail="問題タイプが設定されていません")
-            default_question_type = question_types[0]
-        
-        # 問題をデータベースに登録
-        created_questions = []
-        for extracted_q in extracted_questions:
-            question_data = schemas.QuestionCreate(
-                pdf_id=pdf_id,
-                question_type_id=default_question_type.id,
-                question_number=extracted_q['question_number'],
-                question_text=extracted_q['question_text'],
-                answer_text=extracted_q.get('answer_text'),
-                difficulty_level=extracted_q.get('difficulty_level'),
-                points=extracted_q.get('points'),
-                page_number=extracted_q.get('page_number'),
-                extracted_text=extracted_q.get('extracted_text')
-            )
-            created_question = crud.create_question(db, question_data)
-            created_questions.append(created_question)
-        
-        return {
-            "message": f"{len(created_questions)}個の問題を抽出・登録しました",
-            "extracted_count": len(created_questions),
-            "questions": [schemas.QuestionOut.from_orm(q) for q in created_questions]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"問題抽出に失敗しました: {str(e)}")
-
 @app.get("/pdfs/{pdf_id}/with-questions", response_model=schemas.PDFWithQuestions)
 def get_pdf_with_questions(pdf_id: int, db: Session = Depends(get_db)):
-    """
-    PDFとその関連問題を一緒に取得
-    """
     pdf = crud.get_pdf_by_id(db, pdf_id)
     if not pdf:
-        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+        raise HTTPException(status_code=404, detail="PDF not found")
     
     questions = crud.get_questions_by_pdf_id(db, pdf_id)
-    
-    # PDFWithQuestionsスキーマに変換
-    pdf_with_questions = schemas.PDFWithQuestions(
+    return schemas.PDFWithQuestions(
         id=pdf.id,
         url=pdf.url,
         school=pdf.school,
@@ -392,7 +329,49 @@ def get_pdf_with_questions(pdf_id: int, db: Session = Depends(get_db)):
         year=pdf.year,
         filename=pdf.filename,
         created_at=pdf.created_at,
-        questions=[schemas.QuestionOut.from_orm(q) for q in questions]
+        questions=questions
     )
-    
-    return pdf_with_questions
+
+# 問題タイプ関連のエンドポイント
+@app.get("/question-types/", response_model=List[schemas.QuestionTypeOut])
+def get_question_types(db: Session = Depends(get_db)):
+    return crud.get_question_types(db)
+
+@app.post("/question-types/", response_model=schemas.QuestionTypeOut)
+def create_question_type(question_type: schemas.QuestionTypeCreate, db: Session = Depends(get_db)):
+    return crud.create_question_type(db, question_type)
+
+# 問題関連のエンドポイント
+@app.get("/questions/", response_model=List[schemas.QuestionWithRelations])
+def get_questions(db: Session = Depends(get_db)):
+    return crud.get_questions(db)
+
+@app.get("/questions/{question_id}", response_model=schemas.QuestionWithRelations)
+def get_question(question_id: int, db: Session = Depends(get_db)):
+    question = crud.get_question(db, question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return question
+
+@app.post("/questions/", response_model=schemas.QuestionOut)
+def create_question(question: schemas.QuestionCreate, db: Session = Depends(get_db)):
+    return crud.create_question(db, question)
+
+@app.put("/questions/{question_id}", response_model=schemas.QuestionOut)
+def update_question(question_id: int, question: schemas.QuestionCreate, db: Session = Depends(get_db)):
+    updated_question = crud.update_question(db, question_id, question)
+    if not updated_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return updated_question
+
+@app.delete("/questions/{question_id}")
+def delete_question(question_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_question(db, question_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return {"message": "Question deleted successfully"}
+
+@app.post("/questions/batch")
+def create_multiple_questions(questions: List[schemas.QuestionCreate], db: Session = Depends(get_db)):
+    created_questions = crud.create_multiple_questions(db, questions)
+    return {"message": f"Successfully created {len(created_questions)} questions", "questions": created_questions}

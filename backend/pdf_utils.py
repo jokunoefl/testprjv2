@@ -1,17 +1,19 @@
-import httpx
 import os
-from urllib.parse import urlparse, urljoin
 import re
-from typing import Optional, Tuple, List, Dict
-import requests
-from bs4 import BeautifulSoup
 import asyncio
+import logging
+from typing import List, Optional, Tuple, Dict
+from urllib.parse import urljoin, urlparse
+from datetime import datetime
+
+import httpx
+from bs4 import BeautifulSoup
 import pdfplumber
 import PyPDF2
 import nltk
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords
-import logging
+import pytesseract
+from PIL import Image
+import io
 
 # ロガー設定
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +25,12 @@ try:
     nltk.download('stopwords', quiet=True)
 except:
     pass  # 既にダウンロード済みの場合
+
+# Tesseractのパス設定（macOS）
+try:
+    pytesseract.pytesseract.tesseract_cmd = '/opt/homebrew/bin/tesseract'
+except:
+    pass  # デフォルトパスを使用
 
 async def download_pdf_from_url(url: str, upload_dir: str = "uploaded_pdfs") -> Tuple[str, Optional[str]]:
     """
@@ -253,170 +261,448 @@ def extract_metadata_from_url(url: str) -> dict:
         'year': year
     }
 
-def extract_text_from_pdf(file_path: str) -> Tuple[str, Dict[int, str]]:
+def extract_text_from_pdf_with_ocr(file_path: str) -> Tuple[str, Dict[int, str]]:
     """
-    PDFからテキストを抽出する
+    OCRを使用してPDFからテキストを抽出する
     戻り値: (全体テキスト, {ページ番号: ページテキスト})
     """
+    logger.info(f"OCRテキスト抽出開始: {file_path}")
+    
     try:
+        text_by_page = {}
+        full_text = ""
+        
+        with pdfplumber.open(file_path) as pdf:
+            logger.info(f"OCR - PDFページ数: {len(pdf.pages)}")
+            
+            for page_num, page in enumerate(pdf.pages, 1):
+                try:
+                    # ページを画像に変換
+                    page_image = page.to_image()
+                    if page_image:
+                        # PIL Imageに変換
+                        pil_image = page_image.original
+                        
+                        # 画像の前処理（コントラスト向上）
+                        from PIL import ImageEnhance
+                        enhancer = ImageEnhance.Contrast(pil_image)
+                        pil_image = enhancer.enhance(1.5)  # コントラストを1.5倍に
+                        
+                        # OCRでテキスト抽出（日本語優先）
+                        page_text = pytesseract.image_to_string(
+                            pil_image, 
+                            lang='jpn',  # 日本語のみ
+                            config='--psm 6 --oem 1 -c preserve_interword_spaces=1'
+                        )
+                        
+                        if page_text and page_text.strip():
+                            # テキストの後処理
+                            cleaned_text = clean_ocr_text(page_text)
+                            if cleaned_text:
+                                text_by_page[page_num] = cleaned_text
+                                full_text += f"\n--- ページ {page_num} ---\n{cleaned_text}\n"
+                                logger.info(f"OCR - ページ {page_num}: {len(cleaned_text)} 文字抽出")
+                            else:
+                                logger.warning(f"OCR - ページ {page_num}: クリーンアップ後にテキストが空になりました")
+                        else:
+                            logger.warning(f"OCR - ページ {page_num}: テキストが抽出できませんでした")
+                    else:
+                        logger.warning(f"OCR - ページ {page_num}: 画像変換に失敗")
+                        
+                except Exception as e:
+                    logger.error(f"OCR - ページ {page_num} のテキスト抽出エラー: {str(e)}")
+        
+        if full_text.strip():
+            logger.info(f"OCRでテキスト抽出成功: {len(full_text)} 文字")
+            return full_text, text_by_page
+        else:
+            logger.warning("OCRでもテキストが抽出できませんでした")
+            return "", {}
+            
+    except Exception as e:
+        logger.error(f"OCRテキスト抽出エラー: {str(e)}")
+        return "", {}
+
+def clean_ocr_text(text: str) -> str:
+    """
+    OCRで抽出されたテキストをクリーンアップする
+    """
+    if not text:
+        return ""
+    
+    # 基本的なクリーンアップ
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # 不要な文字の除去
+        line = re.sub(r'[^\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\u3000-\u303F\uFF00-\uFFEF\u0020-\u007E\u3000-\u303F]', '', line)
+        
+        # 連続する空白を単一の空白に
+        line = re.sub(r'\s+', ' ', line)
+        
+        # 行の前後の空白を除去
+        line = line.strip()
+        
+        if line and len(line) > 1:  # 1文字以下の行は除外
+            cleaned_lines.append(line)
+    
+    # 日本語文字が含まれている行のみを保持
+    japanese_lines = []
+    for line in cleaned_lines:
+        # 日本語文字（ひらがな、カタカナ、漢字）が含まれているかチェック
+        if re.search(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]', line):
+            japanese_lines.append(line)
+        # 数字と記号のみの行も保持（問題番号など）
+        elif re.match(r'^[\d\s\(\)①②③④⑤⑥⑦⑧⑨⑩]+$', line):
+            japanese_lines.append(line)
+    
+    return '\n'.join(japanese_lines)
+
+def extract_text_from_pdf(file_path: str) -> Tuple[str, Dict[int, str]]:
+    """
+    PDFからテキストを抽出する（通常の方法 + OCR）
+    戻り値: (全体テキスト, {ページ番号: ページテキスト})
+    """
+    logger.info(f"PDFテキスト抽出開始: {file_path}")
+    
+    try:
+        # ファイルの存在確認
+        if not os.path.exists(file_path):
+            logger.error(f"PDFファイルが存在しません: {file_path}")
+            return "", {}
+        
+        # ファイルサイズ確認
+        file_size = os.path.getsize(file_path)
+        logger.info(f"PDFファイルサイズ: {file_size} bytes")
+        
+        if file_size == 0:
+            logger.error(f"PDFファイルが空です: {file_path}")
+            return "", {}
+        
         # pdfplumberを使用してテキストを抽出
         text_by_page = {}
         full_text = ""
 
-        with pdfplumber.open(file_path) as pdf:
-            for page_num, page in enumerate(pdf.pages, 1):
-                page_text = page.extract_text()
-                if page_text:
-                    text_by_page[page_num] = page_text
-                    full_text += f"\n--- ページ {page_num} ---\n{page_text}\n"
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                logger.info(f"PDFページ数: {len(pdf.pages)}")
+                
+                for page_num, page in enumerate(pdf.pages, 1):
+                    try:
+                        page_text = page.extract_text()
+                        if page_text and page_text.strip():
+                            text_by_page[page_num] = page_text.strip()
+                            full_text += f"\n--- ページ {page_num} ---\n{page_text.strip()}\n"
+                            logger.info(f"ページ {page_num}: {len(page_text)} 文字抽出")
+                        else:
+                            logger.warning(f"ページ {page_num}: テキストが抽出できませんでした")
+                    except Exception as e:
+                        logger.error(f"ページ {page_num} のテキスト抽出エラー: {str(e)}")
+            
+            if full_text.strip():
+                logger.info(f"pdfplumberでテキスト抽出成功: {len(full_text)} 文字")
+                return full_text, text_by_page
+            else:
+                logger.warning("pdfplumberでテキストが抽出できませんでした")
+                
+        except Exception as e:
+            logger.error(f"pdfplumberエラー: {str(e)}")
 
-        return full_text, text_by_page
-
-    except Exception as e:
-        logger.error(f"PDFテキスト抽出エラー: {str(e)}")
         # PyPDF2でフォールバック
+        logger.info("PyPDF2でフォールバック試行")
         try:
             text_by_page = {}
             full_text = ""
 
             with open(file_path, 'rb') as file:
                 pdf_reader = PyPDF2.PdfReader(file)
+                logger.info(f"PyPDF2 - PDFページ数: {len(pdf_reader.pages)}")
+                
                 for page_num, page in enumerate(pdf_reader.pages, 1):
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_by_page[page_num] = page_text
-                        full_text += f"\n--- ページ {page_num} ---\n{page_text}\n"
+                    try:
+                        page_text = page.extract_text()
+                        if page_text and page_text.strip():
+                            text_by_page[page_num] = page_text.strip()
+                            full_text += f"\n--- ページ {page_num} ---\n{page_text.strip()}\n"
+                            logger.info(f"PyPDF2 - ページ {page_num}: {len(page_text)} 文字抽出")
+                        else:
+                            logger.warning(f"PyPDF2 - ページ {page_num}: テキストが抽出できませんでした")
+                    except Exception as e:
+                        logger.error(f"PyPDF2 - ページ {page_num} のテキスト抽出エラー: {str(e)}")
 
-            return full_text, text_by_page
+            if full_text.strip():
+                logger.info(f"PyPDF2でテキスト抽出成功: {len(full_text)} 文字")
+                return full_text, text_by_page
+            else:
+                logger.warning("PyPDF2でもテキストが抽出できませんでした")
 
         except Exception as e2:
-            logger.error(f"PyPDF2でもエラー: {str(e2)}")
-            return "", {}
+            logger.error(f"PyPDF2エラー: {str(e2)}")
 
-def analyze_questions(text: str, subject: str) -> List[Dict]:
+        # OCRでフォールバック
+        logger.info("OCRでフォールバック試行")
+        try:
+            ocr_text, ocr_text_by_page = extract_text_from_pdf_with_ocr(file_path)
+            if ocr_text.strip():
+                logger.info(f"OCRでテキスト抽出成功: {len(ocr_text)} 文字")
+                return ocr_text, ocr_text_by_page
+            else:
+                logger.warning("OCRでもテキストが抽出できませんでした")
+        except Exception as e3:
+            logger.error(f"OCRエラー: {str(e3)}")
+
+        # 最終的にテキストが抽出できなかった場合
+        logger.error(f"すべての方法でテキスト抽出に失敗: {file_path}")
+        return "", {}
+
+    except Exception as e:
+        logger.error(f"PDFテキスト抽出全体エラー: {str(e)}")
+        return "", {}
+
+def analyze_questions(text: str, subject: str = "unknown") -> List[Dict]:
     """
-    テキストから問題を解析して抽出する
+    テキストから問題を分析して抽出する
     """
+    logger.info(f"問題分析開始: {len(text)} 文字")
+    
     questions = []
-
-    # 問題番号のパターンを定義
-    question_patterns = [
-        r'(\d+)[．.、]\s*',  # 1. 1． 1、
-        r'問(\d+)[．.、]\s*',  # 問1. 問1．
-        r'\((\d+)\)\s*',  # (1) (2)
-        r'（(\d+)）\s*',  # （1） （2）
-    ]
-
-    # 科目別のキーワード
-    subject_keywords = {
-        'math': ['計算', '式', '答え', '解', '求める', '証明', '図形', '面積', '体積'],
-        'japanese': ['読解', '文章', '漢字', '文法', '読む', '書く', '表現'],
-        'science': ['実験', '観察', '結果', '理由', '説明', '図', '表'],
-        'social': ['歴史', '地理', '政治', '経済', '文化', '説明', '理由']
-    }
-
     lines = text.split('\n')
     current_question = None
-
-    for line_num, line in enumerate(lines):
+    
+    # 問題パターンを拡張（日本語の問題番号に対応）
+    question_patterns = [
+        r'^(\d+)[\.\)]',  # 1. 1)
+        r'^問(\d+)',      # 問1
+        r'^(\d+)問',      # 1問
+        r'^\((\d+)\)',    # (1)
+        r'^(\d+)[①②③④⑤⑥⑦⑧⑨⑩]',  # 1①
+        r'^[①②③④⑤⑥⑦⑧⑨⑩](\d+)',  # ①1
+        r'^(\d+)[A-Z]',   # 1A
+        r'^[A-Z](\d+)',   # A1
+        r'^(\d+)[a-z]',   # 1a
+        r'^[a-z](\d+)',   # a1
+        r'^問題(\d+)',    # 問題1
+        r'^(\d+)問題',    # 1問題
+        r'^第(\d+)問',    # 第1問
+        r'^(\d+)番',      # 1番
+        r'^(\d+)\.(\d+)', # 1.1
+        r'^(\d+)-(\d+)',  # 1-1
+    ]
+    
+    # 科目キーワードを拡張
+    subject_keywords = {
+        '数学': ['数学', '算数', '計算', '数式', '方程式', '関数', '図形', '面積', '体積', '角度'],
+        '国語': ['国語', '読解', '文章', '漢字', '文法', '読書', '文学', '小説', '詩'],
+        '理科': ['理科', '科学', '物理', '化学', '生物', '地学', '実験', '観察', '自然'],
+        '社会': ['社会', '歴史', '地理', '公民', '政治', '経済', '文化', '国際'],
+        '英語': ['英語', 'English', '英単語', '文法', '読解', 'リスニング'],
+        'unknown': []
+    }
+    
+    # 問題タイプの自動判定
+    question_type_keywords = {
+        '選択問題': ['選択', '選び', '選んで', '正しい', '誤っている', 'ア〜エ', '①〜④', 'A〜D'],
+        '記述問題': ['記述', '説明', '理由', 'なぜ', 'どのように', '述べ', '書きなさい'],
+        '計算問題': ['計算', '求め', '答え', '解き', '式', '方程式', '面積', '体積']
+    }
+    
+    # 難易度キーワード
+    difficulty_keywords = {
+        '基礎': ['基礎', '基本', '簡単', '易しい', '初級'],
+        '標準': ['標準', '普通', '中級', '一般的'],
+        '応用': ['応用', '発展', '難しい', '上級', '高度'],
+        'unknown': []
+    }
+    
+    # 配点パターン
+    point_patterns = [
+        r'（(\d+)点）',
+        r'\((\d+)点\)',
+        r'(\d+)点',
+        r'（(\d+)分）',
+        r'\((\d+)分\)',
+        r'(\d+)分',
+        r'配点(\d+)',
+        r'(\d+)配点'
+    ]
+    
+    for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
-
-        # 問題番号を検出
+        
+        # 問題番号の検出
         question_number = None
         for pattern in question_patterns:
             match = re.match(pattern, line)
             if match:
-                question_number = match.group(1)
+                if len(match.groups()) == 1:
+                    question_number = match.group(1)
+                elif len(match.groups()) == 2:
+                    question_number = f"{match.group(1)}.{match.group(2)}"
                 break
-
+        
         if question_number:
-            # 新しい問題の開始
+            # 前の問題を保存
             if current_question:
                 questions.append(current_question)
-
+            
+            # 新しい問題を開始
             current_question = {
                 'question_number': question_number,
                 'question_text': line,
-                'page_number': None,  # 後で設定
-                'extracted_text': line,
-                'difficulty_level': None,
-                'points': None
+                'subject': subject,
+                'question_type': '選択問題',  # デフォルト
+                'difficulty': 'unknown',
+                'points': 0,
+                'page_number': 1  # デフォルト
             }
+            
+            # 問題タイプの自動判定
+            for qtype, keywords in question_type_keywords.items():
+                if any(keyword in line for keyword in keywords):
+                    current_question['question_type'] = qtype
+                    break
+            
+            # 配点の検出
+            for pattern in point_patterns:
+                point_match = re.search(pattern, line)
+                if point_match:
+                    current_question['points'] = int(point_match.group(1))
+                    break
+            
+            logger.info(f"問題検出: {question_number}")
+            
         elif current_question:
-            # 既存の問題に追加
+            # 現在の問題にテキストを追加
             current_question['question_text'] += '\n' + line
-            current_question['extracted_text'] += '\n' + line
-
+            
+            # 配点がまだ設定されていない場合、行内で検索
+            if current_question['points'] == 0:
+                for pattern in point_patterns:
+                    point_match = re.search(pattern, line)
+                    if point_match:
+                        current_question['points'] = int(point_match.group(1))
+                        break
+    
     # 最後の問題を追加
     if current_question:
         questions.append(current_question)
-
-    # 問題の詳細分析
+    
+    # 配点が設定されていない問題にデフォルト値を設定
     for question in questions:
-        question_text = question['question_text'].lower()
-
-        # 難易度の推定
-        difficulty_keywords = {
-            1: ['簡単', '基礎', '基本'],
-            2: ['標準', '普通'],
-            3: ['応用', '発展'],
-            4: ['難問', '高度'],
-            5: ['超難問', '最難関']
-        }
-
-        for level, keywords in difficulty_keywords.items():
-            if any(keyword in question_text for keyword in keywords):
-                question['difficulty_level'] = level
-                break
-
-        if question['difficulty_level'] is None:
-            question['difficulty_level'] = 2  # デフォルト
-
-        # 配点の推定
-        point_patterns = [
-            r'(\d+)点',
-            r'配点(\d+)',
-            r'\((\d+)点\)'
-        ]
-
-        for pattern in point_patterns:
-            match = re.search(pattern, question_text)
-            if match:
-                question['points'] = float(match.group(1))
-                break
-
-        if question['points'] is None:
-            question['points'] = 5.0  # デフォルト
-
+        if question['points'] == 0:
+            # 問題番号に基づいて推定
+            try:
+                num = int(question['question_number'].split('.')[0])
+                if num <= 5:
+                    question['points'] = 5
+                elif num <= 10:
+                    question['points'] = 3
+                else:
+                    question['points'] = 2
+            except:
+                question['points'] = 3
+    
+    logger.info(f"問題分析完了: {len(questions)} 個の問題を検出")
     return questions
 
-def extract_questions_from_pdf(file_path: str, subject: str) -> List[Dict]:
+def convert_difficulty_to_int(difficulty_str: str) -> int:
     """
-    PDFから問題を抽出するメイン関数
+    難易度文字列を整数に変換する
     """
-    try:
-        # テキストを抽出
-        full_text, text_by_page = extract_text_from_pdf(file_path)
+    difficulty_mapping = {
+        'easy': 1,
+        'medium': 2,
+        'hard': 3,
+        'unknown': 1,  # デフォルトは1（易しい）
+        '易しい': 1,
+        '普通': 2,
+        '難しい': 3,
+        '初級': 1,
+        '中級': 2,
+        '上級': 3,
+    }
+    
+    # 文字列を小文字に変換してマッピングを確認
+    difficulty_lower = difficulty_str.lower()
+    return difficulty_mapping.get(difficulty_lower, 1)  # デフォルトは1
 
-        if not full_text:
+def extract_questions_from_pdf(file_path: str, subject: str = "unknown") -> List[Dict]:
+    """
+    PDFから問題を抽出する
+    """
+    logger.info(f"PDF問題抽出開始: {file_path}, 科目: {subject}")
+    
+    try:
+        # テキスト抽出
+        text, text_by_page = extract_text_from_pdf(file_path)
+        
+        if not text.strip():
             logger.warning(f"PDFからテキストを抽出できませんでした: {file_path}")
             return []
-
-        # 問題を解析
-        questions = analyze_questions(full_text, subject)
-
-        # ページ番号を設定
-        for question in questions:
-            # 問題番号からページ番号を推定（簡易版）
-            question_num = int(question['question_number'])
-            estimated_page = min((question_num - 1) // 5 + 1, len(text_by_page))
-            question['page_number'] = estimated_page
-
+        
+        logger.info(f"抽出されたテキスト長: {len(text)} 文字")
+        logger.info(f"抽出されたページ数: {len(text_by_page)}")
+        
+        # テキストプレビュー（最初の数行）
+        preview_lines = text.split('\n')[:10]
+        preview_text = '\n'.join(preview_lines)
+        logger.info(f"テキストプレビュー: {preview_text}")
+        
+        # 問題分析
+        questions = analyze_questions(text, subject)
+        
+        if not questions:
+            logger.warning(f"問題が検出されませんでした: {file_path}")
+            # デバッグ用：テキストの最初の数行をログ出力
+            lines = text.split('\n')
+            logger.info(f"テキストの行数: {len(lines)}")
+            for i, line in enumerate(lines[:10], 1):
+                logger.info(f"行 {i}: {line}")
+            return []
+        
         logger.info(f"PDFから {len(questions)} 個の問題を抽出しました: {file_path}")
-        return questions
-
+        
+        # 問題データを整形
+        formatted_questions = []
+        for i, question in enumerate(questions, 1):
+            try:
+                # 難易度を整数に変換
+                difficulty_int = convert_difficulty_to_int(question.get('difficulty', 'unknown'))
+                
+                formatted_question = {
+                    'question_number': question['question_number'],
+                    'question_text': question['question_text'],
+                    'answer_text': question.get('answer_text', ''),
+                    'difficulty_level': difficulty_int,  # 整数値に変換
+                    'points': question.get('points', 0),
+                    'page_number': question.get('page_number', 1),
+                    'extracted_text': question.get('extracted_text', question['question_text']),
+                    'question_type': question.get('question_type', '選択問題')
+                }
+                
+                formatted_questions.append(formatted_question)
+                
+                logger.info(f"問題 {i}: 番号={question['question_number']}, "
+                          f"タイプ={formatted_question['question_type']}, "
+                          f"難易度={difficulty_int}, "
+                          f"配点={formatted_question['points']}, "
+                          f"ページ={formatted_question['page_number']}")
+                
+            except Exception as e:
+                logger.error(f"問題 {i} の整形エラー: {e}")
+                continue
+        
+        return formatted_questions
+        
     except Exception as e:
-        logger.error(f"問題抽出エラー: {str(e)}")
+        logger.error(f"問題抽出エラー: {e}")
+        import traceback
+        traceback.print_exc()
         return []
