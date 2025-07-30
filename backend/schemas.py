@@ -43,6 +43,7 @@ class QuestionBase(BaseModel):
     points: Optional[float] = None
     page_number: Optional[int] = None
     extracted_text: Optional[str] = None
+    keywords: Optional[str] = None
 
 class QuestionCreate(QuestionBase):
     pass

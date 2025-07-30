@@ -40,6 +40,7 @@ class Question(Base):
     points = Column(Float)  # 配点
     page_number = Column(Integer)  # PDFのページ番号
     extracted_text = Column(Text)  # 抽出されたテキスト
+    keywords = Column(Text)  # キーワード（カンマ区切り）
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # リレーションシップ
