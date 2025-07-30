@@ -1,15 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
-import models, schemas, crud, database
-from fastapi.middleware.cors import CORSMiddleware
 import os
-import pdf_utils
+import shutil
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from typing import List
+from sqlalchemy.orm import Session
+from typing import Optional, List
+import crud, models, schemas
+from database import SessionLocal, engine
+import pdf_utils
+import ai_analysis
+from config import settings
 
 app = FastAPI()
 
-# CORS設定（React/Streamlitからのアクセス用）
+# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,38 +22,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "uploaded_pdfs"
-
+# データベース依存関係
 def get_db():
-    db = database.SessionLocal()
+    db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
+# アップロードディレクトリの設定
+UPLOAD_DIR = settings.UPLOAD_DIR
+
 @app.on_event("startup")
 def on_startup():
-    # アップロードディレクトリを作成
+    print("アプリケーション起動中...")
+    
+    # 設定の検証
+    if not settings.validate():
+        print("設定エラー: アプリケーションを正常に起動できません。")
+        return
+    
+    # アップロードディレクトリの作成
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     print(f"アップロードディレクトリ確認: {UPLOAD_DIR}")
     
-    database.init_db()
+    # データベースの初期化
+    models.Base.metadata.create_all(bind=engine)
+    
     # デフォルトの問題タイプを作成
-    db = database.SessionLocal()
+    db = SessionLocal()
     try:
         default_types = [
             {"name": "選択問題", "description": "選択肢から正解を選ぶ問題"},
             {"name": "記述問題", "description": "文章で答える問題"},
-            {"name": "計算問題", "description": "計算をして答える問題"},
-            {"name": "図表問題", "description": "図や表を見て答える問題"},
-            {"name": "作文問題", "description": "作文を書く問題"}
+            {"name": "計算問題", "description": "計算を必要とする問題"},
+            {"name": "図表問題", "description": "図表を読み取る問題"}
         ]
+        
         for type_data in default_types:
             existing = crud.get_question_type_by_name(db, type_data["name"])
             if not existing:
                 crud.create_question_type(db, schemas.QuestionTypeCreate(**type_data))
+                print(f"問題タイプ作成: {type_data['name']}")
     finally:
         db.close()
+    
+    print("アプリケーション起動完了")
 
 @app.post("/pdfs/", response_model=schemas.PDFOut)
 def create_pdf(pdf: schemas.PDFCreate, db: Session = Depends(get_db)):
@@ -410,3 +428,33 @@ def delete_question(question_id: int, db: Session = Depends(get_db)):
 def create_multiple_questions(questions: List[schemas.QuestionCreate], db: Session = Depends(get_db)):
     created_questions = crud.create_multiple_questions(db, questions)
     return {"message": f"Successfully created {len(created_questions)} questions", "questions": created_questions}
+
+@app.post("/pdfs/{pdf_id}/analyze")
+async def analyze_pdf_with_ai(pdf_id: int, db: Session = Depends(get_db)):
+    """
+    PDFをClaudeで分析する
+    """
+    try:
+        # PDF情報を取得
+        pdf = crud.get_pdf_by_id(db, pdf_id)
+        if not pdf:
+            raise HTTPException(status_code=404, detail="PDFが見つかりません")
+        
+        # PDFファイルパスを構築
+        pdf_path = os.path.join(UPLOAD_DIR, pdf.filename)
+        if not os.path.exists(pdf_path):
+            raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
+        
+        # AI分析を実行
+        result = await ai_analysis.analyze_pdf_with_claude(
+            pdf_id=pdf_id,
+            pdf_path=pdf_path,
+            school=pdf.school,
+            subject=pdf.subject,
+            year=pdf.year
+        )
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分析中にエラーが発生しました: {str(e)}")

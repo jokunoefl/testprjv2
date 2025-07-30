@@ -422,6 +422,60 @@ def extract_metadata_from_url(url: str) -> dict:
             'year': 2024
         }
 
+async def extract_text_from_pdf(pdf_path: str) -> Optional[str]:
+    """
+    PDFからテキストを抽出する（AI分析用）
+    """
+    try:
+        logger.info(f"テキスト抽出開始: {pdf_path}")
+        
+        # pdfplumberで試行
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                text = ""
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                
+                if text.strip():
+                    logger.info(f"pdfplumberでテキスト抽出成功: {len(text)} 文字")
+                    return text.strip()
+        except Exception as e:
+            logger.warning(f"pdfplumberでテキスト抽出失敗: {str(e)}")
+        
+        # PyPDF2でフォールバック
+        try:
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                text = ""
+                for page in pdf_reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                
+                if text.strip():
+                    logger.info(f"PyPDF2でテキスト抽出成功: {len(text)} 文字")
+                    return text.strip()
+        except Exception as e:
+            logger.warning(f"PyPDF2でテキスト抽出失敗: {str(e)}")
+        
+        # OCRでフォールバック
+        try:
+            text, _ = extract_text_from_pdf_with_ocr(pdf_path)
+            if text:
+                logger.info(f"OCRでテキスト抽出成功: {len(text)} 文字")
+                return text
+        except Exception as e:
+            logger.warning(f"OCRでテキスト抽出失敗: {str(e)}")
+        
+        logger.error(f"すべての方法でテキスト抽出に失敗: {pdf_path}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"テキスト抽出エラー: {str(e)}")
+        return None
+
 def extract_text_from_pdf_with_ocr(file_path: str) -> Tuple[str, Dict[int, str]]:
     """
     OCRを使用してPDFからテキストを抽出する
