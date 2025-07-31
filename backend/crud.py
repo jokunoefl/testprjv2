@@ -23,6 +23,17 @@ def get_pdf_by_filename(db: Session, filename: str):
 def get_pdf_by_id(db: Session, pdf_id: int):
     return db.query(models.PDF).filter(models.PDF.id == pdf_id).first()
 
+def update_pdf(db: Session, pdf_id: int, pdf_update: dict):
+    """PDFのメタデータを更新する"""
+    db_pdf = db.query(models.PDF).filter(models.PDF.id == pdf_id).first()
+    if db_pdf:
+        for key, value in pdf_update.items():
+            if hasattr(db_pdf, key):
+                setattr(db_pdf, key, value)
+        db.commit()
+        db.refresh(db_pdf)
+    return db_pdf
+
 # QuestionType CRUD operations
 def create_question_type(db: Session, question_type: schemas.QuestionTypeCreate):
     db_question_type = models.QuestionType(**question_type.dict())

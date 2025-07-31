@@ -305,6 +305,16 @@ def get_pdf(pdf_id: int, db: Session = Depends(get_db)):
     
     return pdf
 
+@app.put("/pdfs/{pdf_id}")
+def update_pdf(pdf_id: int, pdf_update: dict, db: Session = Depends(get_db)):
+    """
+    PDFのメタデータを更新する
+    """
+    pdf = crud.get_pdf_by_id(db, pdf_id)
+    if not pdf:
+        raise HTTPException(status_code=404, detail="PDFが見つかりません")
+    return crud.update_pdf(db, pdf_id, pdf_update)
+
 # QuestionType エンドポイント
 @app.post("/question-types/", response_model=schemas.QuestionTypeOut)
 def create_question_type(question_type: schemas.QuestionTypeCreate, db: Session = Depends(get_db)):
