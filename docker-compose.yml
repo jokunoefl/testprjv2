@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "80:80"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+    volumes:
+      - ./uploaded_pdfs:/app/backend/uploaded_pdfs
+      - ./data:/app/backend/data
+    restart: unless-stopped
+
+  # 開発環境用
+  app-dev:
+    build: .
+    ports:
+      - "3000:80"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+    volumes:
+      - ./uploaded_pdfs:/app/backend/uploaded_pdfs
+      - ./data:/app/backend/data
+      - ./frontend/react_app/src:/app/frontend/src
+    restart: unless-stopped 

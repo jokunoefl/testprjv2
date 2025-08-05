@@ -75,11 +75,35 @@ npm start
 
 ## 使用方法
 
+### 開発環境
+
 1. **ブラウザでアクセス**: `http://localhost:3000`
 2. **PDFアップロード**: ファイルアップロードまたはURLからダウンロード
 3. **Webサイトクローリング**: サイトURLを入力してPDFを自動抽出
 4. **PDF一覧**: 保存されたPDFの一覧を表示・検索
 5. **PDF表示**: ファイル名をクリックしてPDFを表示
+
+### 本番環境
+
+詳細なデプロイ手順は [DEPLOYMENT.md](./DEPLOYMENT.md) を参照してください。
+
+#### 推奨デプロイ方法
+
+1. **フロントエンド**: Vercel
+2. **バックエンド**: Railway
+3. **データベース**: Railway PostgreSQL
+
+#### クイックデプロイ
+
+```bash
+# フロントエンド（Vercel）
+cd frontend/react_app
+vercel --prod
+
+# バックエンド（Railway）
+cd backend
+railway up
+```
 
 ## API エンドポイント
 

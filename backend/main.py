@@ -14,9 +14,15 @@ from config import settings
 app = FastAPI()
 
 # CORS設定
+origins = [
+    "http://localhost:3000",
+    "https://your-frontend-domain.vercel.app",  # 本番環境のフロントエンドURL
+    os.getenv("FRONTEND_URL", "http://localhost:3000")
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
