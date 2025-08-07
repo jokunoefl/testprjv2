@@ -90,8 +90,8 @@ npm start
 #### 推奨デプロイ方法
 
 1. **フロントエンド**: Vercel
-2. **バックエンド**: Railway
-3. **データベース**: Railway PostgreSQL
+2. **バックエンド**: Render
+3. **データベース**: Render PostgreSQL
 
 #### クイックデプロイ
 
@@ -100,9 +100,8 @@ npm start
 cd frontend/react_app
 vercel --prod
 
-# バックエンド（Railway）
-cd backend
-railway up
+# バックエンド（Render）
+# RenderダッシュボードでGitHubリポジトリを接続してデプロイ
 ```
 
 ## API エンドポイント

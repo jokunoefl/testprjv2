@@ -2,7 +2,7 @@
 
 ## 🚀 デプロイオプション
 
-### 1. Vercel + Railway (推奨)
+### 1. Vercel + Render (推奨)
 
 #### フロントエンド（Vercel）
 
@@ -20,41 +20,30 @@
 
 3. **環境変数設定**
    - Vercelダッシュボードで `REACT_APP_API_URL` を設定
-   - バックエンドのURLを指定（例: `https://your-backend.railway.app`）
+   - バックエンドのURLを指定（例: `https://your-backend.onrender.com`）
 
-#### バックエンド（Railway）
+#### バックエンド（Render）
 
-1. **Railwayアカウント作成**
-   - [Railway.app](https://railway.app) にサインアップ
+1. **Renderアカウント作成**
+   - [Render.com](https://render.com) にサインアップ
 
 2. **プロジェクト作成**
-   ```bash
-   cd backend
-   railway login
-   railway init
-   ```
+   - Renderダッシュボードで「New Web Service」を選択
+   - GitHubリポジトリを接続
 
 3. **環境変数設定**
-   ```bash
-   railway variables set ANTHROPIC_API_KEY=your_api_key
-   railway variables set FRONTEND_URL=https://your-frontend.vercel.app
-   railway variables set PYTHONPATH=/app/backend
-   ```
+   - Renderダッシュボードで以下を設定：
+     - `ANTHROPIC_API_KEY`: your_api_key
+     - `FRONTEND_URL`: https://your-frontend.vercel.app
 
 4. **デプロイ**
-   ```bash
-   railway up
-   ```
+   - 自動デプロイが開始されます
 
 5. **トラブルシューティング**
    - ビルドエラーが発生した場合：
-     ```bash
-     railway logs
-     ```
+     - Renderダッシュボードでログを確認
    - 依存関係の問題：
-     ```bash
-     railway variables set NIXPACKS_NIX_VERSION=2.3.16
-     ```
+     - `requirements.txt`の内容を確認
 
 ### 2. Docker + AWS/GCP/Azure
 
@@ -180,8 +169,8 @@ docker-compose logs -f
 # Heroku
 heroku logs --tail
 
-# Railway
-railway logs
+# Render
+# Renderダッシュボードでログを確認
 
 # Cloud Run
 gcloud logging read "resource.type=cloud_run_revision"
