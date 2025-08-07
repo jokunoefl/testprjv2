@@ -1,22 +1,33 @@
 import os
 import shutil
+import sys
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
+
+# Railway環境での相対インポート対応
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from config import settings
+except ImportError:
+    # 代替設定
+    class Settings:
+        ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+        UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploaded_pdfs")
+        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        
+        def validate(self):
+            return bool(self.ANTHROPIC_API_KEY)
+    
+    settings = Settings()
+
 import crud, models, schemas
 from database import SessionLocal, engine
 import pdf_utils
 import ai_analysis
-try:
-    from config import settings
-except ImportError:
-    # Railway環境での相対インポート対応
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from config import settings
 
 app = FastAPI()
 
