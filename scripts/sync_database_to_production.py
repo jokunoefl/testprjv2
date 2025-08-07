@@ -11,7 +11,7 @@ from typing import List, Dict
 
 # 設定
 PRODUCTION_API_URL = "https://testprjv2-backend.onrender.com"
-LOCAL_DB_PATH = "backend/pdfs.db"
+LOCAL_DB_PATH = "../backend/pdfs.db"
 
 def get_local_pdfs() -> List[Dict]:
     """ローカルデータベースからPDF情報を取得"""
@@ -144,7 +144,7 @@ def main():
         print(f"\n[{i}/{len(upload_targets)}] 処理中...")
         
         # PDFファイルパスを構築
-        pdf_file_path = Path("backend/uploaded_pdfs") / pdf['filename']
+        pdf_file_path = Path("../backend/uploaded_pdfs") / pdf['filename']
         
         if upload_pdf_to_production(pdf, pdf_file_path):
             success_count += 1

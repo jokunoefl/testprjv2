@@ -357,7 +357,7 @@ async def crawl_pdfs_from_url(
         raise HTTPException(status_code=500, detail=f"クローリングに失敗しました: {str(e)}")
 
 @app.get("/pdfs/{pdf_id}/view")
-def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
+async def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
     """
     PDFファイルを表示する
     """
@@ -369,37 +369,48 @@ def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
     
     file_path = os.path.join(UPLOAD_DIR, pdf.filename)
     
-    # 本番環境でのファイル存在チェックを改善
+    # ファイルが存在しない場合、元のURLからダウンロードを試行
     if not os.path.exists(file_path):
         print(f"PDFファイルが見つかりません: {file_path}")
-        print(f"UPLOAD_DIR: {UPLOAD_DIR}")
-        print(f"現在のディレクトリ: {os.getcwd()}")
-        print(f"ディレクトリ内容: {os.listdir('.')}")
+        print(f"元のURLからダウンロードを試行: {pdf.url}")
         
-        # 代替パスのチェック
-        alternative_paths = [
-            os.path.join("uploaded_pdfs", pdf.filename),
-            os.path.join("/app/uploaded_pdfs", pdf.filename),
-            os.path.join(".", "uploaded_pdfs", pdf.filename)
-        ]
-        
-        for alt_path in alternative_paths:
-            if os.path.exists(alt_path):
-                print(f"代替パスでファイル発見: {alt_path}")
-                with open(alt_path, 'rb') as f:
-                    content = f.read()
-                return Response(
-                    content=content,
-                    media_type='application/pdf',
-                    headers={
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-                        'Access-Control-Allow-Headers': '*',
-                        'Content-Disposition': f'inline; filename="{pdf.filename}"'
-                    }
-                )
-        
-        raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
+        try:
+            # 元のURLからPDFをダウンロード
+            filename, error = await pdf_utils.download_pdf_from_url(pdf.url, UPLOAD_DIR)
+            if error:
+                print(f"ダウンロードエラー: {error}")
+                raise HTTPException(status_code=404, detail=f"PDFファイルのダウンロードに失敗しました: {error}")
+            
+            # ダウンロードされたファイルを使用
+            file_path = os.path.join(UPLOAD_DIR, filename)
+            print(f"ダウンロード成功: {file_path}")
+            
+        except Exception as e:
+            print(f"ダウンロード処理エラー: {e}")
+            # 代替パスのチェック
+            alternative_paths = [
+                os.path.join("uploaded_pdfs", pdf.filename),
+                os.path.join("/app/uploaded_pdfs", pdf.filename),
+                os.path.join(".", "uploaded_pdfs", pdf.filename)
+            ]
+            
+            for alt_path in alternative_paths:
+                if os.path.exists(alt_path):
+                    print(f"代替パスでファイル発見: {alt_path}")
+                    with open(alt_path, 'rb') as f:
+                        content = f.read()
+                    return Response(
+                        content=content,
+                        media_type='application/pdf',
+                        headers={
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                            'Access-Control-Allow-Headers': '*',
+                            'Content-Disposition': f'inline; filename="{pdf.filename}"'
+                        }
+                    )
+            
+            raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
     
     # PDFファイルを読み込んでCORSヘッダー付きで返す
     try:
