@@ -122,6 +122,7 @@ export const PDFList: React.FC<PDFListProps> = ({
 
 
   const handlePDFClick = (pdfId: number) => {
+    console.log('PDF表示ボタンがクリックされました:', pdfId);
     onPDFSelect(pdfId);
   };
 
@@ -308,8 +309,18 @@ export const PDFList: React.FC<PDFListProps> = ({
                                           <button 
                                             className="view-button"
                                             onClick={() => handlePDFClick(pdf.id)}
+                                            style={{
+                                              backgroundColor: '#007bff',
+                                              color: 'white',
+                                              border: 'none',
+                                              padding: '8px 16px',
+                                              borderRadius: '4px',
+                                              cursor: 'pointer',
+                                              fontWeight: 'bold',
+                                              fontSize: '14px'
+                                            }}
                                           >
-                                            過去問題表示
+                                            📄 過去問題表示
                                           </button>
                                           <button 
                                             className="ai-analysis-button"

@@ -14,6 +14,8 @@ function PDFViewerWrapper() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   
+  console.log('PDFViewerWrapper: PDF ID =', id);
+  
   if (!id) return <div>PDF ID not found</div>;
   
   return (
@@ -31,6 +33,7 @@ function AppContent() {
   const navigate = useNavigate();
 
   const handlePDFSelect = (pdfId: number) => {
+    console.log('PDF表示画面に遷移します:', pdfId);
     navigate(`/pdf/${pdfId}`);
   };
 
