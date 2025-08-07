@@ -142,7 +142,8 @@ def on_startup():
     print(f"使用ポート: {port}")
     print(f"APIドキュメント: http://0.0.0.0:{port}/docs")
     print(f"フロントエンドURL: {settings.FRONTEND_URL}")
-    print(f"Railway URL: https://your-app.railway.app/docs")
+    print(f"環境: {settings.__class__.__name__}")
+    print(f"デバッグモード: {settings.DEBUG}")
     print("=== 起動プロセス完了 ===")
 
 @app.post("/pdfs/", response_model=schemas.PDFOut)

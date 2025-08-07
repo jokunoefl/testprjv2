@@ -1,29 +1,34 @@
+import os
 from .base import BaseConfig
 
 class ProductionConfig(BaseConfig):
     """本番環境設定"""
     
-    # デバッグ設定
-    DEBUG: bool = False
-    LOG_LEVEL: str = "WARNING"
-    
-    # データベース設定（本番用）
-    DATABASE_URL: str = "sqlite:///./production_pdfs.db"
-    
-    # ファイルアップロード設定（本番用）
-    UPLOAD_DIR: str = "/app/uploaded_pdfs"
-    
-    # CORS設定（本番用）
-    FRONTEND_URL: str = "https://testprjv2.vercel.app"
-    
-    # セキュリティ設定（本番用）
-    SECRET_KEY: str = None  # 環境変数から取得
-    
-    # API設定（本番用）
-    ANTHROPIC_API_KEY: str = None  # 環境変数から取得
-    
-    # ファイルサイズ制限（本番用）
-    MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB
+    def __init__(self):
+        super().__init__()
+        
+        # デバッグ設定
+        self.DEBUG = False
+        self.LOG_LEVEL = "WARNING"
+        
+        # データベース設定（本番用）
+        self.DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./production_pdfs.db")
+        
+        # ファイルアップロード設定（本番用）
+        self.UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploaded_pdfs")
+        
+        # CORS設定（本番用）
+        self.FRONTEND_URL = os.getenv("FRONTEND_URL", "https://testprjv2.vercel.app")
+        
+        # セキュリティ設定（本番用）
+        self.SECRET_KEY = os.getenv("SECRET_KEY")  # 環境変数から取得
+        
+        # API設定（本番用）
+        self.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")  # 環境変数から取得
+        
+        # ファイルサイズ制限（本番用）
+        max_size_mb = int(os.getenv("MAX_FILE_SIZE", "100"))
+        self.MAX_FILE_SIZE = max_size_mb * 1024 * 1024
     
     def validate(self) -> bool:
         """本番環境設定の妥当性をチェック"""
