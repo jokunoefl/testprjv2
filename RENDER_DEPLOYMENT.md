@@ -16,11 +16,20 @@
 Name: testprjv2-backend
 Root Directory: backend
 Runtime: Python 3
-Build Command: pip install -r requirements.txt
-Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
+Build Command: |
+  python -m venv venv
+  source venv/bin/activate
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  mkdir -p uploaded_pdfs
+Start Command: |
+  source venv/bin/activate
+  uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-**注意**: `requirements.txt`はbackendディレクトリにコピー済みです。
+**注意**: 
+- `requirements.txt`はbackendディレクトリにコピー済みです
+- 仮想環境を使用してrootユーザー警告を回避します
 
 ### 4. 環境変数設定
 ```
@@ -150,4 +159,17 @@ gcloud run deploy testprjv2 \
 - 環境変数の設定
 - ポート設定
 - 依存関係のインストール
-- ログの確認 
+- ログの確認
+
+## ⚠️ よくある警告と対処法
+
+### pip警告について
+```
+WARNING: Running pip as the 'root' user can result in broken permissions...
+```
+この警告は、Renderのビルド環境でrootユーザーとしてpipを実行する際に表示されます。上記の設定では仮想環境を使用することでこの警告を回避しています。この警告は実際のデプロイには影響しませんが、より適切な設定を推奨します。
+
+**対処法**:
+- 仮想環境を使用する（上記の設定で対応済み）
+- `--user`フラグを使用する
+- 警告は無視して問題なし 
