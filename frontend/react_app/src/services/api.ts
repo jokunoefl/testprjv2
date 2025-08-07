@@ -3,6 +3,9 @@ import { PDF, Question, QuestionType, PDFWithQuestions } from '../types';
 
 const API_BASE_URL = 'https://testprjv2-backend.onrender.com'; // Render backend
 
+// デバッグ用ログ
+console.log('API_BASE_URL:', API_BASE_URL);
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
