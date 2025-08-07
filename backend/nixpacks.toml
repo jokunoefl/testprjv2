@@ -14,4 +14,4 @@ cmds = [
 ]
 
 [start]
-cmd = "python railway_minimal.py" 
+cmd = "python railway_basic_fixed.py" 

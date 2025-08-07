@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python railway_minimal.py",
+    "startCommand": "python railway_basic_fixed.py",
     "healthcheckPath": "/docs",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
