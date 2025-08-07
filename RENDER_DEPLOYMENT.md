@@ -20,10 +20,12 @@ Build Command: pip install -r requirements.txt
 Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
+**注意**: `requirements.txt`はbackendディレクトリにコピー済みです。
+
 ### 4. 環境変数設定
 ```
 ANTHROPIC_API_KEY=your_actual_api_key
-FRONTEND_URL=https://your-frontend-url.vercel.app
+FRONTEND_URL=https://reactapp-zeta.vercel.app
 UPLOAD_DIR=/opt/render/project/src/uploaded_pdfs
 ```
 
