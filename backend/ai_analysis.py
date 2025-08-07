@@ -3,7 +3,13 @@ import logging
 import base64
 from typing import Optional, List
 from anthropic import Anthropic
-from pdf2image import convert_from_path
+try:
+    from pdf2image import convert_from_path
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
+    print("Warning: pdf2image not available. PDF to image conversion will be disabled.")
+
 from PIL import Image
 import io
 import sys
@@ -40,10 +46,16 @@ async def analyze_pdf_with_claude(pdf_id: int, pdf_path: str, school: str, subje
         # PDFファイルを画像に変換
         images = convert_pdf_to_images(pdf_path)
         if not images:
-            return {
-                "success": False,
-                "error": "PDFファイルの画像変換に失敗しました。"
-            }
+            if not PDF2IMAGE_AVAILABLE:
+                return {
+                    "success": False,
+                    "error": "PDF to image conversion is not available (pdf2image is not installed). Please install pdf2image and poppler-utils for full functionality."
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "PDFファイルの画像変換に失敗しました。"
+                }
         
         # Claudeへのプロンプトを作成
         prompt = create_analysis_prompt(school, subject, year)
@@ -70,6 +82,10 @@ def convert_pdf_to_images(pdf_path: str) -> Optional[List[str]]:
     """
     PDFファイルを画像に変換する
     """
+    if not PDF2IMAGE_AVAILABLE:
+        logger.warning("PDF to image conversion is not available (pdf2image is not installed)")
+        return None
+    
     try:
         logger.info(f"PDFを画像に変換中: {pdf_path}")
         
