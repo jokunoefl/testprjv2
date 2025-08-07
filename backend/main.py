@@ -7,28 +7,25 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
-# Railway環境での相対インポート対応
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-# 環境変数から直接設定を読み込み
-class RailwaySettings:
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-    UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploaded_pdfs")
-    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pdfs.db")
-    DEBUG = os.getenv("DEBUG", "False").lower() == "true"
-    
-    def validate(self):
-        # Railway環境ではAPIキーがなくても起動を許可
-        if not self.ANTHROPIC_API_KEY:
-            print("警告: ANTHROPIC_API_KEYが設定されていません")
-            print("AI機能は使用できませんが、アプリケーションは起動します")
-        return True
-
+# 環境設定の読み込み
 try:
-    from config import settings
+    from config import config as settings
 except ImportError:
-    settings = RailwaySettings()
+    # フォールバック設定
+    class FallbackSettings:
+        ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+        UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploaded_pdfs")
+        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pdfs.db")
+        DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+        
+        def validate(self):
+            if not self.ANTHROPIC_API_KEY:
+                print("警告: ANTHROPIC_API_KEYが設定されていません")
+                print("AI機能は使用できませんが、アプリケーションは起動します")
+            return True
+    
+    settings = FallbackSettings()
 
 import crud, models, schemas
 from database import SessionLocal, engine

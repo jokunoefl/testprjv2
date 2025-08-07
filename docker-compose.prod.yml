@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend-prod:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=sqlite:///./production_pdfs.db
+      - UPLOAD_DIR=/app/uploaded_pdfs
+      - FRONTEND_URL=https://testprjv2.vercel.app
+      - DEBUG=false
+      - LOG_LEVEL=WARNING
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - production_uploaded_pdfs:/app/uploaded_pdfs
+      - production_data:/app/data
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - backend-prod
+    restart: unless-stopped
+
+volumes:
+  production_uploaded_pdfs:
+  production_data:
