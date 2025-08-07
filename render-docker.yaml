@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: testprjv2-backend
+    env: docker
+    plan: free
+    rootDir: backend
+    dockerfile: Dockerfile.render
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        value: your_actual_api_key
+      - key: FRONTEND_URL
+        value: https://reactapp-zeta.vercel.app
+      - key: UPLOAD_DIR
+        value: /app/uploaded_pdfs
+      - key: PYTHONPATH
+        value: /app 
