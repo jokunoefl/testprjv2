@@ -108,8 +108,10 @@ def on_startup():
     
     print("アプリケーション起動完了")
     port = os.getenv('PORT', '8000')
+    print(f"使用ポート: {port}")
     print(f"APIドキュメント: http://0.0.0.0:{port}/docs")
     print(f"フロントエンドURL: {settings.FRONTEND_URL}")
+    print(f"Railway URL: https://your-app.railway.app/docs")
 
 @app.post("/pdfs/", response_model=schemas.PDFOut)
 def create_pdf(pdf: schemas.PDFCreate, db: Session = Depends(get_db)):
