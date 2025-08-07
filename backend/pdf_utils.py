@@ -11,7 +11,13 @@ from bs4 import BeautifulSoup
 import pdfplumber
 import PyPDF2
 import nltk
-import pytesseract
+try:
+    import pytesseract
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
+    print("Warning: pytesseract not available. OCR functionality will be disabled.")
+
 from PIL import Image
 import io
 
@@ -481,6 +487,10 @@ def extract_text_from_pdf_with_ocr(file_path: str) -> Tuple[str, Dict[int, str]]
     OCRを使用してPDFからテキストを抽出する
     戻り値: (全体テキスト, {ページ番号: ページテキスト})
     """
+    if not TESSERACT_AVAILABLE:
+        logger.warning("OCR機能が利用できません（pytesseractがインストールされていません）")
+        return "", {}
+    
     logger.info(f"OCRテキスト抽出開始: {file_path}")
     
     try:
@@ -659,17 +669,20 @@ def extract_text_from_pdf(file_path: str) -> Tuple[str, Dict[int, str]]:
         except Exception as e2:
             logger.error(f"PyPDF2エラー: {str(e2)}")
 
-        # OCRでフォールバック
-        logger.info("OCRでフォールバック試行")
-        try:
-            ocr_text, ocr_text_by_page = extract_text_from_pdf_with_ocr(file_path)
-            if ocr_text.strip():
-                logger.info(f"OCRでテキスト抽出成功: {len(ocr_text)} 文字")
-                return ocr_text, ocr_text_by_page
-            else:
-                logger.warning("OCRでもテキストが抽出できませんでした")
-        except Exception as e3:
-            logger.error(f"OCRエラー: {str(e3)}")
+        # OCRでフォールバック（利用可能な場合のみ）
+        if TESSERACT_AVAILABLE:
+            logger.info("OCRでフォールバック試行")
+            try:
+                ocr_text, ocr_text_by_page = extract_text_from_pdf_with_ocr(file_path)
+                if ocr_text.strip():
+                    logger.info(f"OCRでテキスト抽出成功: {len(ocr_text)} 文字")
+                    return ocr_text, ocr_text_by_page
+                else:
+                    logger.warning("OCRでもテキストが抽出できませんでした")
+            except Exception as e3:
+                logger.error(f"OCRエラー: {str(e3)}")
+        else:
+            logger.info("OCR機能が利用できないため、スキップします")
 
         # 最終的にテキストが抽出できなかった場合
         logger.error(f"すべての方法でテキスト抽出に失敗: {file_path}")
