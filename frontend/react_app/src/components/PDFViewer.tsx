@@ -139,17 +139,47 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ pdfId, onBack }) => {
         </div>
         
         <div className="pdf-embedded-view">
+          <div className="pdf-debug-info" style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
+            <p><strong>デバッグ情報:</strong></p>
+            <p>PDF URL: {pdfUrl}</p>
+            <p>API Base URL: {process.env.REACT_APP_API_URL}</p>
+            <p>環境: {process.env.REACT_APP_ENVIRONMENT}</p>
+          </div>
+          
           <iframe
             src={pdfUrl}
             title={`${pdf.school} - ${getSubjectLabel(pdf.subject)} (${pdf.year})`}
             width="100%"
             height="800px"
             style={{ border: '1px solid #ccc' }}
+            onLoad={() => {
+              console.log('PDF iframe loaded successfully');
+            }}
             onError={(e) => {
               console.error('PDF iframe error:', e);
               alert('PDFの埋め込み表示に失敗しました。ダウンロードしてください。');
             }}
           />
+          
+          <div className="pdf-fallback" style={{ marginTop: '10px', textAlign: 'center' }}>
+            <p>PDFが表示されない場合は、以下のリンクをクリックしてください：</p>
+            <a 
+              href={pdfUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{ 
+                display: 'inline-block', 
+                padding: '10px 20px', 
+                backgroundColor: '#007bff', 
+                color: 'white', 
+                textDecoration: 'none', 
+                borderRadius: '5px',
+                margin: '5px'
+              }}
+            >
+              📄 新しいタブでPDFを開く
+            </a>
+          </div>
         </div>
       </div>
     </div>

@@ -361,15 +361,63 @@ def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
     """
     PDFファイルを表示する
     """
+    from fastapi.responses import Response
+    
     pdf = db.query(models.PDF).filter(models.PDF.id == pdf_id).first()
     if not pdf:
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
     
     file_path = os.path.join(UPLOAD_DIR, pdf.filename)
+    
+    # 本番環境でのファイル存在チェックを改善
     if not os.path.exists(file_path):
+        print(f"PDFファイルが見つかりません: {file_path}")
+        print(f"UPLOAD_DIR: {UPLOAD_DIR}")
+        print(f"現在のディレクトリ: {os.getcwd()}")
+        print(f"ディレクトリ内容: {os.listdir('.')}")
+        
+        # 代替パスのチェック
+        alternative_paths = [
+            os.path.join("uploaded_pdfs", pdf.filename),
+            os.path.join("/app/uploaded_pdfs", pdf.filename),
+            os.path.join(".", "uploaded_pdfs", pdf.filename)
+        ]
+        
+        for alt_path in alternative_paths:
+            if os.path.exists(alt_path):
+                print(f"代替パスでファイル発見: {alt_path}")
+                with open(alt_path, 'rb') as f:
+                    content = f.read()
+                return Response(
+                    content=content,
+                    media_type='application/pdf',
+                    headers={
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                        'Access-Control-Allow-Headers': '*',
+                        'Content-Disposition': f'inline; filename="{pdf.filename}"'
+                    }
+                )
+        
         raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
     
-    return FileResponse(file_path, media_type='application/pdf')
+    # PDFファイルを読み込んでCORSヘッダー付きで返す
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+        return Response(
+            content=content,
+            media_type='application/pdf',
+            headers={
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': '*',
+                'Content-Disposition': f'inline; filename="{pdf.filename}"'
+            }
+        )
+    except Exception as e:
+        print(f"PDFファイル読み込みエラー: {e}")
+        raise HTTPException(status_code=500, detail="PDFファイルの読み込みに失敗しました")
 
 @app.get("/pdfs/{pdf_id}")
 def get_pdf(pdf_id: int, db: Session = Depends(get_db)):

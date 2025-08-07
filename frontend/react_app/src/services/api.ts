@@ -149,7 +149,12 @@ export const pdfApi = {
     }
   },
   
-  viewPDF: (id: number): string => `${API_BASE_URL}/pdfs/${id}/view`,
+  viewPDF: (id: number): string => {
+    const url = `${API_BASE_URL}/pdfs/${id}/view`;
+    console.log('Generated PDF view URL:', url);
+    console.log('API_BASE_URL:', API_BASE_URL);
+    return url;
+  },
   
   getPDFWithQuestions: async (id: number): Promise<PDFWithQuestions> => {
     try {

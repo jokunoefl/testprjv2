@@ -15,7 +15,7 @@ class ProductionConfig(BaseConfig):
         self.DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./production_pdfs.db")
         
         # ファイルアップロード設定（本番用）
-        self.UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploaded_pdfs")
+        self.UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploaded_pdfs")
         
         # CORS設定（本番用）
         self.FRONTEND_URL = os.getenv("FRONTEND_URL", "https://testprjv2.vercel.app")
