@@ -65,28 +65,58 @@ UPLOAD_DIR = settings.UPLOAD_DIR
 
 @app.on_event("startup")
 def on_startup():
-    print("アプリケーション起動中...")
-    print(f"環境変数 PORT: {os.getenv('PORT', '8000')}")
-    print(f"環境変数 PYTHONPATH: {os.getenv('PYTHONPATH', 'Not set')}")
+    print("=== アプリケーション起動開始 ===")
+    print(f"現在のディレクトリ: {os.getcwd()}")
+    print(f"Python実行パス: {sys.executable}")
+    print(f"Pythonバージョン: {sys.version}")
+    
+    # 環境変数の詳細確認
+    print("\n=== 環境変数詳細 ===")
+    print(f"PORT: '{os.getenv('PORT', 'Not set')}' (type: {type(os.getenv('PORT'))})")
+    print(f"PYTHONPATH: '{os.getenv('PYTHONPATH', 'Not set')}'")
+    print(f"UPLOAD_DIR: '{os.getenv('UPLOAD_DIR', 'Not set')}'")
+    print(f"ANTHROPIC_API_KEY: '{os.getenv('ANTHROPIC_API_KEY', 'Not set')[:10]}...'")
+    print(f"FRONTEND_URL: '{os.getenv('FRONTEND_URL', 'Not set')}'")
+    
+    # 全ての環境変数を表示（デバッグ用）
+    print("\n=== 全ての環境変数 ===")
+    for key, value in os.environ.items():
+        if 'KEY' in key or 'SECRET' in key:
+            print(f"  {key}: [HIDDEN]")
+        else:
+            print(f"  {key}: {value}")
     
     # 設定の検証
+    print("\n=== 設定検証 ===")
     if not settings.validate():
         print("設定エラー: アプリケーションを正常に起動できません。")
         return
     
     # アップロードディレクトリの作成
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    print(f"アップロードディレクトリ確認: {UPLOAD_DIR}")
+    print("\n=== ファイルシステム操作 ===")
+    try:
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        print(f"アップロードディレクトリ確認: {UPLOAD_DIR}")
+        print(f"ディレクトリ存在: {os.path.exists(UPLOAD_DIR)}")
+        print(f"ディレクトリ書き込み権限: {os.access(UPLOAD_DIR, os.W_OK)}")
+    except Exception as e:
+        print(f"アップロードディレクトリ作成エラー: {e}")
+        return
     
     # データベースの初期化
+    print("\n=== データベース初期化 ===")
     try:
         models.Base.metadata.create_all(bind=engine)
         print("データベース初期化完了")
     except Exception as e:
         print(f"データベース初期化エラー: {e}")
+        print(f"エラータイプ: {type(e)}")
+        import traceback
+        print(f"スタックトレース: {traceback.format_exc()}")
         return
     
     # デフォルトの問題タイプを作成
+    print("\n=== 問題タイプ作成 ===")
     db = SessionLocal()
     try:
         default_types = [
@@ -103,15 +133,18 @@ def on_startup():
                 print(f"問題タイプ作成: {type_data['name']}")
     except Exception as e:
         print(f"問題タイプ作成エラー: {e}")
+        import traceback
+        print(f"スタックトレース: {traceback.format_exc()}")
     finally:
         db.close()
     
-    print("アプリケーション起動完了")
+    print("\n=== アプリケーション起動完了 ===")
     port = os.getenv('PORT', '8000')
     print(f"使用ポート: {port}")
     print(f"APIドキュメント: http://0.0.0.0:{port}/docs")
     print(f"フロントエンドURL: {settings.FRONTEND_URL}")
     print(f"Railway URL: https://your-app.railway.app/docs")
+    print("=== 起動プロセス完了 ===")
 
 @app.post("/pdfs/", response_model=schemas.PDFOut)
 def create_pdf(pdf: schemas.PDFCreate, db: Session = Depends(get_db)):
