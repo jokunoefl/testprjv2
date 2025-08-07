@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: testprjv2-backend
+    env: python
+    plan: free
+    rootDir: backend
+    buildCommand: |
+      apt-get update && apt-get install -y tesseract-ocr poppler-utils
+      pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        value: your_actual_api_key
+      - key: FRONTEND_URL
+        value: https://reactapp-zeta.vercel.app
+      - key: UPLOAD_DIR
+        value: /opt/render/project/src/uploaded_pdfs
+      - key: PYTHONPATH
+        value: /opt/render/project/src 

@@ -11,25 +11,39 @@
 2. GitHubリポジトリを連携
 3. リポジトリ `jokunoefl/testprjv2` を選択
 
-### 3. サービス設定
+### 3. サービス設定（複数オプション）
+
+#### オプション1: シンプル設定（推奨）
+```
+Name: testprjv2-backend
+Root Directory: backend
+Runtime: Python 3
+Build Command: pip install -r requirements-render.txt
+Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+#### オプション2: システム依存関係付き
 ```
 Name: testprjv2-backend
 Root Directory: backend
 Runtime: Python 3
 Build Command: |
-  python -m venv venv
-  source venv/bin/activate
-  pip install --upgrade pip
+  apt-get update && apt-get install -y tesseract-ocr poppler-utils
   pip install -r requirements.txt
-  mkdir -p uploaded_pdfs
-Start Command: |
-  source venv/bin/activate
-  uvicorn main:app --host 0.0.0.0 --port $PORT
+Start Command: uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+#### オプション3: Dockerfile使用
+```
+Name: testprjv2-backend
+Root Directory: backend
+Runtime: Docker
+Dockerfile: Dockerfile.render
 ```
 
 **注意**: 
-- `requirements.txt`はbackendディレクトリにコピー済みです
-- 仮想環境を使用してrootユーザー警告を回避します
+- `requirements-render.txt`はシステム依存関係を除外したバージョンです
+- ビルドが失敗する場合は、オプション2または3を試してください
 
 ### 4. 環境変数設定
 ```
