@@ -38,12 +38,23 @@
    ```bash
    railway variables set ANTHROPIC_API_KEY=your_api_key
    railway variables set FRONTEND_URL=https://your-frontend.vercel.app
+   railway variables set PYTHONPATH=/app/backend
    ```
 
 4. **デプロイ**
    ```bash
    railway up
    ```
+
+5. **トラブルシューティング**
+   - ビルドエラーが発生した場合：
+     ```bash
+     railway logs
+     ```
+   - 依存関係の問題：
+     ```bash
+     railway variables set NIXPACKS_NIX_VERSION=2.3.16
+     ```
 
 ### 2. Docker + AWS/GCP/Azure
 

@@ -9,7 +9,14 @@ import crud, models, schemas
 from database import SessionLocal, engine
 import pdf_utils
 import ai_analysis
-from config import settings
+try:
+    from config import settings
+except ImportError:
+    # Railway環境での相対インポート対応
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from config import settings
 
 app = FastAPI()
 

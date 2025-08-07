@@ -13,3 +13,4 @@ Pillow==11.3.0
 anthropic==0.18.1
 python-dotenv==1.0.0
 pdf2image==1.17.0
+pydantic-settings==2.1.0

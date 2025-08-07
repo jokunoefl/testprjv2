@@ -6,7 +6,14 @@ from anthropic import Anthropic
 from pdf2image import convert_from_path
 from PIL import Image
 import io
-from config import settings
+try:
+    from config import settings
+except ImportError:
+    # Railway環境での相対インポート対応
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from config import settings
 
 logger = logging.getLogger(__name__)
 
