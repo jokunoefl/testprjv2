@@ -40,7 +40,8 @@ app = FastAPI()
 # CORS設定
 origins = [
     "http://localhost:3000",
-    "https://reactapp-zeta.vercel.app",  # VercelのフロントエンドURL
+    "https://reactapp-zeta.vercel.app",  # 古いVercelのフロントエンドURL
+    "https://testprjv2.vercel.app",  # 新しいVercelのフロントエンドURL
     "https://your-frontend-domain.vercel.app",  # 本番環境のフロントエンドURL
     os.getenv("FRONTEND_URL", "http://localhost:3000")
 ]
