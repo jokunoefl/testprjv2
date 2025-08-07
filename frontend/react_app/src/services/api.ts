@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { PDF, Question, QuestionType, PDFWithQuestions } from '../types';
 
-const API_BASE_URL = 'https://testprjv2-backend.onrender.com'; // Render backend
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001'; // 開発環境用
 
 // デバッグ用ログ
 console.log('API_BASE_URL:', API_BASE_URL);

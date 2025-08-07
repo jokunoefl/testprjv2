@@ -15,7 +15,7 @@ class DevelopmentConfig(BaseConfig):
         self.DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev_pdfs.db")
         
         # ファイルアップロード設定（開発用）
-        self.UPLOAD_DIR = os.getenv("UPLOAD_DIR", "dev_uploaded_pdfs")
+        self.UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploaded_pdfs")
         
         # CORS設定（開発用）
         self.FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
