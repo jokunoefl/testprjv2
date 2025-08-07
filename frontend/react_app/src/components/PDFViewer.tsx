@@ -144,6 +144,63 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ pdfId, onBack }) => {
             <p>PDF URL: {pdfUrl}</p>
             <p>API Base URL: {process.env.REACT_APP_API_URL}</p>
             <p>環境: {process.env.REACT_APP_ENVIRONMENT}</p>
+            <p>元のURL: {pdf.url}</p>
+          </div>
+          
+          <div className="pdf-alternatives" style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#fff3cd', border: '1px solid #ffeaa7', borderRadius: '5px' }}>
+            <h3>📋 PDF表示オプション</h3>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <a 
+                href={pdfUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{ 
+                  display: 'inline-block', 
+                  padding: '10px 20px', 
+                  backgroundColor: '#007bff', 
+                  color: 'white', 
+                  textDecoration: 'none', 
+                  borderRadius: '5px',
+                  margin: '5px'
+                }}
+              >
+                📄 新しいタブでPDFを開く
+              </a>
+              
+              <a 
+                href={pdf.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{ 
+                  display: 'inline-block', 
+                  padding: '10px 20px', 
+                  backgroundColor: '#28a745', 
+                  color: 'white', 
+                  textDecoration: 'none', 
+                  borderRadius: '5px',
+                  margin: '5px'
+                }}
+              >
+                🌐 元のページを開く
+              </a>
+              
+              <button 
+                onClick={handleDownloadPDF}
+                style={{ 
+                  display: 'inline-block', 
+                  padding: '10px 20px', 
+                  backgroundColor: '#ffc107', 
+                  color: '#212529', 
+                  textDecoration: 'none', 
+                  borderRadius: '5px',
+                  margin: '5px',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                💾 PDFをダウンロード
+              </button>
+            </div>
           </div>
           
           <iframe
@@ -157,29 +214,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ pdfId, onBack }) => {
             }}
             onError={(e) => {
               console.error('PDF iframe error:', e);
-              alert('PDFの埋め込み表示に失敗しました。ダウンロードしてください。');
+              alert('PDFの埋め込み表示に失敗しました。上記のオプションをお試しください。');
             }}
           />
-          
-          <div className="pdf-fallback" style={{ marginTop: '10px', textAlign: 'center' }}>
-            <p>PDFが表示されない場合は、以下のリンクをクリックしてください：</p>
-            <a 
-              href={pdfUrl} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              style={{ 
-                display: 'inline-block', 
-                padding: '10px 20px', 
-                backgroundColor: '#007bff', 
-                color: 'white', 
-                textDecoration: 'none', 
-                borderRadius: '5px',
-                margin: '5px'
-              }}
-            >
-              📄 新しいタブでPDFを開く
-            </a>
-          </div>
         </div>
       </div>
     </div>

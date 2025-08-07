@@ -175,31 +175,39 @@ def upload_pdf(
         file_size = len(file_content)
         print(f"ファイルサイズ: {file_size} bytes")
         
-        # ファイルを保存
+        # ファイルを保存（既存ファイルがある場合は上書き）
         with open(file_path, "wb") as f:
             f.write(file_content)
         print(f"ファイル保存完了: {file_path}")
         
-        # DBに保存
-        pdf_in = schemas.PDFCreate(
-            url=url,
-            school=school,
-            subject=subject,
-            year=year,
-            filename=filename
-        )
-        result = crud.create_pdf(db, pdf_in)
+        # 既存のPDFエントリを確認
+        existing_pdf = crud.get_pdf_by_filename(db, filename)
+        
+        if existing_pdf:
+            # 既存エントリがある場合は更新
+            print(f"既存PDFエントリを更新: {filename}")
+            pdf_update = {
+                'url': url,
+                'school': school,
+                'subject': subject,
+                'year': year
+            }
+            result = crud.update_pdf(db, existing_pdf.id, pdf_update)
+        else:
+            # 新規エントリを作成
+            pdf_in = schemas.PDFCreate(
+                url=url,
+                school=school,
+                subject=subject,
+                year=year,
+                filename=filename
+            )
+            result = crud.create_pdf(db, pdf_in)
+        
         print(f"DB保存成功: {filename}")
         return result
-    except ValueError as e:
-        # ファイル名重複エラーの場合、アップロードされたファイルを削除
-        print(f"ファイル名重複エラー: {str(e)}")
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            print(f"重複ファイル削除: {file_path}")
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # その他のエラーの場合も、アップロードされたファイルを削除
+        # エラーの場合、アップロードされたファイルを削除
         print(f"アップロードエラー: {str(e)}")
         if os.path.exists(file_path):
             os.remove(file_path)
