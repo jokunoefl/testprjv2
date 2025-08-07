@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "uvicorn backend.main:app --host 0.0.0.0 --port $PORT",
+    "startCommand": "python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT",
     "healthcheckPath": "/",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
@@ -14,7 +14,8 @@
     "production": {
       "variables": {
         "PYTHONPATH": "/app",
-        "UPLOAD_DIR": "/app/uploaded_pdfs"
+        "UPLOAD_DIR": "/app/uploaded_pdfs",
+        "PORT": "8001"
       }
     }
   }
