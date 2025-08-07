@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { PDF, Question, QuestionType, PDFWithQuestions } from '../types';
 
-const API_BASE_URL = 'https://testprjv2-backend.onrender.com';
+const API_BASE_URL = 'https://testprjv2-backend.onrender.com'; // Render backend
 
 const api = axios.create({
   baseURL: API_BASE_URL,
