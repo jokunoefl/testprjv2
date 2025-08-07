@@ -34,15 +34,22 @@ def main():
         'main:app',
         '--host', '0.0.0.0',
         '--port', str(port),
-        '--workers', '1'
+        '--workers', '1',
+        '--log-level', 'info'
     ]
+    
+    # 環境変数を明示的に設定
+    env = os.environ.copy()
+    env['PORT'] = str(port)
+    env['PYTHONPATH'] = pythonpath
+    env['UPLOAD_DIR'] = upload_dir
     
     print(f"実行コマンド: {' '.join(cmd)}")
     print("アプリケーション起動中...")
     
     # アプリケーション起動
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, env=env, check=True)
     except subprocess.CalledProcessError as e:
         print(f"アプリケーション起動エラー: {e}")
         sys.exit(1)
