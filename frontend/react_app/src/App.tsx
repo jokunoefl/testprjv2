@@ -103,6 +103,15 @@ function AppContent() {
             )
           } />
           <Route path="/pdf/:id" element={<PDFViewerWrapper />} />
+          <Route path="*" element={
+            <div style={{ padding: '20px', textAlign: 'center' }}>
+              <h2>ページが見つかりません</h2>
+              <p>お探しのページは存在しないか、移動された可能性があります。</p>
+              <button onClick={() => navigate('/')} style={{ padding: '10px 20px', marginTop: '10px' }}>
+                ホームに戻る
+              </button>
+            </div>
+          } />
         </Routes>
       </main>
     </div>
