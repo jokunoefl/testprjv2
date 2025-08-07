@@ -10,19 +10,25 @@ from typing import Optional, List
 # Railway環境での相対インポート対応
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# 環境変数から直接設定を読み込み
+class RailwaySettings:
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploaded_pdfs")
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pdfs.db")
+    DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+    
+    def validate(self):
+        # Railway環境ではAPIキーがなくても起動を許可
+        if not self.ANTHROPIC_API_KEY:
+            print("警告: ANTHROPIC_API_KEYが設定されていません")
+            print("AI機能は使用できませんが、アプリケーションは起動します")
+        return True
+
 try:
     from config import settings
 except ImportError:
-    # 代替設定
-    class Settings:
-        ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-        UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploaded_pdfs")
-        FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        
-        def validate(self):
-            return bool(self.ANTHROPIC_API_KEY)
-    
-    settings = Settings()
+    settings = RailwaySettings()
 
 import crud, models, schemas
 from database import SessionLocal, engine
@@ -60,6 +66,8 @@ UPLOAD_DIR = settings.UPLOAD_DIR
 @app.on_event("startup")
 def on_startup():
     print("アプリケーション起動中...")
+    print(f"環境変数 PORT: {os.getenv('PORT', '8000')}")
+    print(f"環境変数 PYTHONPATH: {os.getenv('PYTHONPATH', 'Not set')}")
     
     # 設定の検証
     if not settings.validate():
@@ -71,7 +79,12 @@ def on_startup():
     print(f"アップロードディレクトリ確認: {UPLOAD_DIR}")
     
     # データベースの初期化
-    models.Base.metadata.create_all(bind=engine)
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        print("データベース初期化完了")
+    except Exception as e:
+        print(f"データベース初期化エラー: {e}")
+        return
     
     # デフォルトの問題タイプを作成
     db = SessionLocal()
@@ -88,10 +101,15 @@ def on_startup():
             if not existing:
                 crud.create_question_type(db, schemas.QuestionTypeCreate(**type_data))
                 print(f"問題タイプ作成: {type_data['name']}")
+    except Exception as e:
+        print(f"問題タイプ作成エラー: {e}")
     finally:
         db.close()
     
     print("アプリケーション起動完了")
+    port = os.getenv('PORT', '8000')
+    print(f"APIドキュメント: http://0.0.0.0:{port}/docs")
+    print(f"フロントエンドURL: {settings.FRONTEND_URL}")
 
 @app.post("/pdfs/", response_model=schemas.PDFOut)
 def create_pdf(pdf: schemas.PDFCreate, db: Session = Depends(get_db)):
