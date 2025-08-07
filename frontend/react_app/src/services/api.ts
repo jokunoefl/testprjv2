@@ -5,6 +5,7 @@ const API_BASE_URL = 'https://testprjv2-backend.onrender.com'; // Render backend
 
 // デバッグ用ログ
 console.log('API_BASE_URL:', API_BASE_URL);
+console.log('Frontend connecting to Render backend...');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
