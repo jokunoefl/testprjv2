@@ -49,18 +49,17 @@ def delete_pdf(db: Session, pdf_id: int) -> bool:
         if db_pdf:
             print(f"PDF削除開始: ID {pdf_id}, ファイル名: {db_pdf.filename}")
             
-            # 関連する質問を確認
+            # 関連する質問を確認（削除は一時的に無効化）
             related_questions = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).all()
             print(f"関連する質問数: {len(related_questions)}")
             
-            # 関連する質問を削除
-            if related_questions:
-                try:
-                    db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete()
-                    print("関連する質問を削除しました")
-                except Exception as e:
-                    print(f"質問削除エラー: {str(e)}")
-                    # 質問削除に失敗してもPDF削除は続行
+            # 関連する質問の削除を一時的に無効化（デバッグ用）
+            # if related_questions:
+            #     try:
+            #         db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete()
+            #         print("関連する質問を削除しました")
+            #     except Exception as e:
+            #         print(f"質問削除エラー: {str(e)}")
             
             # PDFレコードを削除
             db.delete(db_pdf)
