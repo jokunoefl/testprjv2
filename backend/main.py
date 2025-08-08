@@ -599,16 +599,41 @@ async def analyze_pdf_with_ai(pdf_id: int, db: Session = Depends(get_db)):
         if not os.path.exists(pdf_path):
             raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
         
+        # ANTHROPIC_API_KEYの確認
+        if not settings.ANTHROPIC_API_KEY:
+            return {
+                "success": False,
+                "error": "AI分析機能は現在利用できません。ANTHROPIC_API_KEYが設定されていません。"
+            }
+        
         # AI分析を実行
-        result = await ai_analysis.analyze_pdf_with_claude(
-            pdf_id=pdf_id,
-            pdf_path=pdf_path,
-            school=pdf.school,
-            subject=pdf.subject,
-            year=pdf.year
-        )
+        try:
+            result = await ai_analysis.analyze_pdf_with_claude(
+                pdf_id=pdf_id,
+                pdf_path=pdf_path,
+                school=pdf.school,
+                subject=pdf.subject,
+                year=pdf.year
+            )
+            return result
+        except ImportError as e:
+            return {
+                "success": False,
+                "error": f"AI分析に必要なライブラリがインストールされていません: {str(e)}"
+            }
+        except Exception as e:
+            print(f"AI分析エラー詳細: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": f"AI分析中にエラーが発生しました: {str(e)}"
+            }
         
-        return result
-        
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"AI分析エンドポイントエラー: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"分析中にエラーが発生しました: {str(e)}")

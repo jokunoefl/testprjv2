@@ -34,7 +34,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Claude APIクライアントの初期化
-anthropic = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+try:
+    anthropic = Anthropic(api_key=settings.ANTHROPIC_API_KEY) if settings.ANTHROPIC_API_KEY else None
+except Exception as e:
+    print(f"Anthropic API初期化エラー: {e}")
+    anthropic = None
 
 async def analyze_pdf_with_claude(pdf_id: int, pdf_path: str, school: str, subject: str, year: int) -> dict:
     """
@@ -43,19 +47,27 @@ async def analyze_pdf_with_claude(pdf_id: int, pdf_path: str, school: str, subje
     try:
         logger.info(f"PDF分析開始: ID={pdf_id}, ファイル={pdf_path}")
         
+        # API KEYの確認
+        if not settings.ANTHROPIC_API_KEY:
+            return {
+                "success": False,
+                "error": "AI分析機能は現在利用できません。管理者にお問い合わせください。"
+            }
+        
+        # PDF2IMAGEの可用性をチェック
+        if not PDF2IMAGE_AVAILABLE:
+            return {
+                "success": False,
+                "error": "AI分析機能は現在メンテナンス中です。pdf2imageライブラリまたはpoppler-utilsが利用できません。"
+            }
+        
         # PDFファイルを画像に変換
         images = convert_pdf_to_images(pdf_path)
         if not images:
-            if not PDF2IMAGE_AVAILABLE:
-                return {
-                    "success": False,
-                    "error": "PDF to image conversion is not available (pdf2image is not installed). Please install pdf2image and poppler-utils for full functionality."
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": "PDFファイルの画像変換に失敗しました。"
-                }
+            return {
+                "success": False,
+                "error": "PDFファイルの画像変換に失敗しました。ファイルが破損している可能性があります。"
+            }
         
         # Claudeへのプロンプトを作成
         prompt = create_analysis_prompt(school, subject, year)
@@ -75,7 +87,7 @@ async def analyze_pdf_with_claude(pdf_id: int, pdf_path: str, school: str, subje
         logger.error(f"PDF分析エラー: ID={pdf_id}, エラー={str(e)}")
         return {
             "success": False,
-            "error": f"分析中にエラーが発生しました: {str(e)}"
+            "error": f"AI分析中にエラーが発生しました。しばらくしてから再度お試しください。"
         }
 
 def convert_pdf_to_images(pdf_path: str) -> Optional[List[str]]:
@@ -262,6 +274,9 @@ def send_images_to_claude(prompt: str, images: List[str]) -> str:
     Claudeに画像を送信する
     """
     try:
+        if not anthropic:
+            raise Exception("Anthropic APIクライアントが初期化されていません")
+        
         logger.info(f"Claudeに画像を送信中... ({len(images)} ページ)")
         
         # メッセージの内容を構築

@@ -5,6 +5,7 @@ services:
     plan: free
     rootDir: backend
     buildCommand: |
+      apt-get update && apt-get install -y poppler-utils tesseract-ocr
       python -m venv venv
       source venv/bin/activate
       pip install --upgrade pip
