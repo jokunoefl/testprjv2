@@ -46,9 +46,19 @@ async def download_pdf_from_url(url: str, upload_dir: str = "uploaded_pdfs") -> 
     try:
         logger.info(f"PDFダウンロード開始: {url}")
         
-        # タイムアウト設定付きでダウンロード
+        # タイムアウトとヘッダー設定付きでダウンロード（UA/Refererを付与）
         timeout = httpx.Timeout(60.0, connect=15.0, read=45.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        parsed = urlparse(url)
+        default_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/pdf,application/octet-stream,*/*;q=0.9",
+            "Referer": f"{parsed.scheme}://{parsed.netloc}",
+        }
+        async with httpx.AsyncClient(timeout=timeout, headers=default_headers) as client:
             try:
                 response = await client.get(url, follow_redirects=True)
                 response.raise_for_status()
@@ -106,9 +116,19 @@ async def crawl_and_download_pdfs(url: str, upload_dir: str = "uploaded_pdfs") -
         if not url.startswith(('http://', 'https://')):
             return [], "URLは http:// または https:// で始まる必要があります"
         
-        # タイムアウト設定付きでサイトのHTMLを取得
+        # タイムアウトとヘッダー設定付きでサイトのHTMLを取得
         timeout = httpx.Timeout(30.0, connect=10.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        parsed = urlparse(url)
+        default_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": f"{parsed.scheme}://{parsed.netloc}",
+        }
+        async with httpx.AsyncClient(timeout=timeout, headers=default_headers) as client:
             try:
                 logger.info(f"サイトに接続中: {url}")
                 response = await client.get(url, follow_redirects=True)
