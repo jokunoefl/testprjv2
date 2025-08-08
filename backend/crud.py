@@ -45,38 +45,54 @@ def update_pdf(db: Session, pdf_id: int, pdf_update: dict):
 def delete_pdf(db: Session, pdf_id: int) -> bool:
     """PDFレコードをデータベースから削除する"""
     try:
+        print(f"=== PDF削除処理開始: ID {pdf_id} ===")
+        
+        # PDFレコードを取得
         db_pdf = db.query(models.PDF).filter(models.PDF.id == pdf_id).first()
-        if db_pdf:
-            print(f"PDF削除開始: ID {pdf_id}, ファイル名: {db_pdf.filename}")
+        if not db_pdf:
+            print(f"PDFが見つかりません: ID {pdf_id}")
+            return False
             
-            # 関連する質問を確認
-            related_questions = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).all()
-            print(f"関連する質問数: {len(related_questions)}")
-            
-            # 関連する質問を個別に削除（外部キー制約のため）
-            if related_questions:
-                try:
-                    for question in related_questions:
-                        db.delete(question)
-                    print(f"{len(related_questions)}個の質問を削除しました")
-                except Exception as e:
-                    print(f"質問削除エラー: {str(e)}")
-                    db.rollback()
-                    return False
-            
-            # PDFレコードを削除
+        print(f"PDF情報: ID {pdf_id}, ファイル名: {db_pdf.filename}")
+        
+        # 関連する質問を確認
+        related_questions = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).all()
+        print(f"関連する質問数: {len(related_questions)}")
+        
+        # 関連する質問を削除（外部キー制約のため）
+        if related_questions:
+            print("関連する質問を削除中...")
+            try:
+                for i, question in enumerate(related_questions):
+                    print(f"質問 {i+1}/{len(related_questions)} を削除中...")
+                    db.delete(question)
+                print(f"{len(related_questions)}個の質問を削除しました")
+            except Exception as e:
+                print(f"質問削除エラー: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                db.rollback()
+                return False
+        
+        # PDFレコードを削除
+        print("PDFレコードを削除中...")
+        try:
             db.delete(db_pdf)
             db.commit()
             print(f"PDF削除完了: ID {pdf_id}")
             return True
-        else:
-            print(f"PDFが見つかりません: ID {pdf_id}")
+        except Exception as e:
+            print(f"PDFレコード削除エラー: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            db.rollback()
             return False
+            
     except Exception as e:
-        db.rollback()
-        print(f"PDF削除エラー: {str(e)}")
+        print(f"PDF削除全体エラー: {str(e)}")
         import traceback
         traceback.print_exc()
+        db.rollback()
         return False
 
 # QuestionType CRUD operations
