@@ -36,9 +36,16 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Database (commented out to allow database files in git)
-# *.db
-# *.sqlite3
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db-journal
+**/data/*.db
+**/database/*.db
+**/*.db.backup
 
 # Logs
 *.log
