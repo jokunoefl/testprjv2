@@ -399,6 +399,31 @@ async def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
     if not os.path.exists(file_path):
         print(f"PDFファイルが見つかりません: {file_path}")
         print(f"元のURLからダウンロードを試行: {pdf.url}")
+
+        # URLが未設定の場合は、代替パスを確認してから明確な404を返す
+        if not pdf.url:
+            print("PDFのURLが未設定のため再取得できません。代替パスを確認します。")
+            alternative_paths = [
+                os.path.join("uploaded_pdfs", pdf.filename),
+                os.path.join("/app/uploaded_pdfs", pdf.filename),
+                os.path.join(".", "uploaded_pdfs", pdf.filename)
+            ]
+            for alt_path in alternative_paths:
+                if os.path.exists(alt_path):
+                    print(f"代替パスでファイル発見: {alt_path}")
+                    with open(alt_path, 'rb') as f:
+                        content = f.read()
+                    return Response(
+                        content=content,
+                        media_type='application/pdf',
+                        headers={
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                            'Access-Control-Allow-Headers': '*',
+                            'Content-Disposition': f'inline; filename="{pdf.filename}"'
+                        }
+                    )
+            raise HTTPException(status_code=404, detail="PDFファイルが見つからず、URLが未設定のため再取得できません。管理画面からPDFを再アップロードするか、有効なURLを設定してください。")
         
         try:
             # 元のURLからPDFをダウンロード
