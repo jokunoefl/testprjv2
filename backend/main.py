@@ -146,6 +146,15 @@ def on_startup():
     print(f"デバッグモード: {settings.DEBUG}")
     print("=== 起動プロセス完了 ===")
 
+@app.get("/")
+def read_root():
+    return {"message": "PDF Management API"}
+
+@app.get("/health")
+def health_check():
+    """ヘルスチェックエンドポイント"""
+    return {"status": "healthy", "message": "API is running"}
+
 @app.post("/pdfs/", response_model=schemas.PDFOut)
 def create_pdf(pdf: schemas.PDFCreate, db: Session = Depends(get_db)):
     return crud.create_pdf(db, pdf)

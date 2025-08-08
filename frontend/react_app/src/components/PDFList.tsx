@@ -379,7 +379,7 @@ export const PDFList: React.FC<PDFListProps> = ({
                                                   marginLeft: '8px'
                                                 }}
                                               >
-                                                🗑️ 削除
+                                                削除
                                               </button>
                                             </>
                                           )}
