@@ -151,8 +151,15 @@ def create_pdf(pdf: schemas.PDFCreate, db: Session = Depends(get_db)):
     return crud.create_pdf(db, pdf)
 
 @app.get("/pdfs/", response_model=list[schemas.PDFOut])
-def read_pdfs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_pdfs(skip: int = 0, limit: int = 100, school: str = None, db: Session = Depends(get_db)):
+    if school:
+        return crud.get_pdfs_by_school(db, school, skip=skip, limit=limit)
     return crud.get_pdfs(db, skip=skip, limit=limit)
+
+@app.get("/schools/", response_model=List[str])
+def get_schools(db: Session = Depends(get_db)):
+    """学校一覧を取得"""
+    return crud.get_distinct_schools(db)
 
 @app.post("/upload_pdf/", response_model=schemas.PDFOut)
 def upload_pdf(

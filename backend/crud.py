@@ -17,6 +17,14 @@ def create_pdf(db: Session, pdf: schemas.PDFCreate):
 def get_pdfs(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.PDF).offset(skip).limit(limit).all()
 
+def get_pdfs_by_school(db: Session, school: str, skip: int = 0, limit: int = 100):
+    return db.query(models.PDF).filter(models.PDF.school == school).offset(skip).limit(limit).all()
+
+def get_distinct_schools(db: Session):
+    """全ての学校名を重複なしで取得"""
+    result = db.query(models.PDF.school).distinct().all()
+    return [school[0] for school in result if school[0]]
+
 def get_pdf_by_filename(db: Session, filename: str):
     return db.query(models.PDF).filter(models.PDF.filename == filename).first()
 
