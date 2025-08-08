@@ -167,15 +167,60 @@ export const pdfApi = {
   },
 
   analyzePDF: async (pdfId: number): Promise<AIAnalysisResult> => {
-    try {
-      const response = await api.post<AIAnalysisResult>(`/pdfs/${pdfId}/analyze`, {}, {
-        timeout: 120000, // AI分析用に2分のタイムアウト
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Failed to analyze PDF:', error);
-      throw error;
+    const maxRetries = 3;
+    const baseTimeout = 180000; // 3分のタイムアウト
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`AI分析試行 ${attempt}/${maxRetries} for PDF ${pdfId}`);
+        
+        const response = await api.post<AIAnalysisResult>(`/pdfs/${pdfId}/analyze`, {}, {
+          timeout: baseTimeout * attempt, // リトライごとにタイムアウトを延長
+        });
+        
+        console.log(`AI分析成功: PDF ${pdfId}`);
+        return response.data;
+      } catch (error: any) {
+        console.error(`AI分析試行 ${attempt} 失敗:`, error);
+        
+        // 最後の試行でない場合はリトライ
+        if (attempt < maxRetries) {
+          const waitTime = Math.min(1000 * attempt, 5000); // 1秒、2秒、5秒で待機
+          console.log(`${waitTime}ms後にリトライします...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+        
+        // 最後の試行でも失敗した場合
+        console.error('AI分析が全ての試行で失敗しました');
+        
+        // エラーメッセージを改善
+        let errorMessage = 'AI分析に失敗しました';
+        if (error.response) {
+          // サーバーからのエラーレスポンス
+          const status = error.response.status;
+          const data = error.response.data;
+          
+          if (status === 404) {
+            errorMessage = 'PDFファイルが見つかりません';
+          } else if (status === 500) {
+            errorMessage = data?.error || 'サーバー内部エラーが発生しました';
+          } else if (status === 408 || status === 504) {
+            errorMessage = 'AI分析がタイムアウトしました。しばらくしてから再試行してください';
+          } else {
+            errorMessage = `サーバーエラー (${status}): ${data?.error || error.response.statusText}`;
+          }
+        } else if (error.code === 'ECONNABORTED') {
+          errorMessage = 'AI分析がタイムアウトしました。しばらくしてから再試行してください';
+        } else if (error.message) {
+          errorMessage = `ネットワークエラー: ${error.message}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
     }
+    
+    throw new Error('AI分析に失敗しました');
   },
 };
 

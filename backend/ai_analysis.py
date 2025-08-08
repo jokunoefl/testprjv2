@@ -307,7 +307,8 @@ def send_images_to_claude(prompt: str, images: List[str]) -> str:
                     "role": "user",
                     "content": content
                 }
-            ]
+            ],
+            timeout=300.0  # 5分のタイムアウト
         )
         
         logger.info("Claudeからの応答を受信")
@@ -315,4 +316,19 @@ def send_images_to_claude(prompt: str, images: List[str]) -> str:
         
     except Exception as e:
         logger.error(f"Claude API呼び出しエラー: {str(e)}")
-        raise e 
+        logger.error(f"エラータイプ: {type(e).__name__}")
+        import traceback
+        logger.error(f"スタックトレース: {traceback.format_exc()}")
+        
+        # より詳細なエラーメッセージを提供
+        error_msg = str(e)
+        if "timeout" in error_msg.lower():
+            raise Exception("AI分析がタイムアウトしました。しばらくしてから再試行してください")
+        elif "rate limit" in error_msg.lower():
+            raise Exception("AI分析の利用制限に達しました。しばらくしてから再試行してください")
+        elif "quota" in error_msg.lower():
+            raise Exception("AI分析の利用上限に達しました。管理者にお問い合わせください")
+        elif "authentication" in error_msg.lower() or "api key" in error_msg.lower():
+            raise Exception("AI分析の認証に失敗しました。管理者にお問い合わせください")
+        else:
+            raise Exception(f"AI分析中にエラーが発生しました: {error_msg}") 
