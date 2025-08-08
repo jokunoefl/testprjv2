@@ -47,16 +47,34 @@ def delete_pdf(db: Session, pdf_id: int) -> bool:
     try:
         db_pdf = db.query(models.PDF).filter(models.PDF.id == pdf_id).first()
         if db_pdf:
-            # 関連する質問も削除
-            db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete()
+            print(f"PDF削除開始: ID {pdf_id}, ファイル名: {db_pdf.filename}")
+            
+            # 関連する質問を確認
+            related_questions = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).all()
+            print(f"関連する質問数: {len(related_questions)}")
+            
+            # 関連する質問を削除
+            if related_questions:
+                try:
+                    db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete()
+                    print("関連する質問を削除しました")
+                except Exception as e:
+                    print(f"質問削除エラー: {str(e)}")
+                    # 質問削除に失敗してもPDF削除は続行
+            
             # PDFレコードを削除
             db.delete(db_pdf)
             db.commit()
+            print(f"PDF削除完了: ID {pdf_id}")
             return True
-        return False
+        else:
+            print(f"PDFが見つかりません: ID {pdf_id}")
+            return False
     except Exception as e:
         db.rollback()
         print(f"PDF削除エラー: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
 
 # QuestionType CRUD operations
