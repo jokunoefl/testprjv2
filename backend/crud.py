@@ -42,6 +42,23 @@ def update_pdf(db: Session, pdf_id: int, pdf_update: dict):
         db.refresh(db_pdf)
     return db_pdf
 
+def delete_pdf(db: Session, pdf_id: int) -> bool:
+    """PDFレコードをデータベースから削除する"""
+    try:
+        db_pdf = db.query(models.PDF).filter(models.PDF.id == pdf_id).first()
+        if db_pdf:
+            # 関連する質問も削除
+            db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete()
+            # PDFレコードを削除
+            db.delete(db_pdf)
+            db.commit()
+            return True
+        return False
+    except Exception as e:
+        db.rollback()
+        print(f"PDF削除エラー: {str(e)}")
+        return False
+
 # QuestionType CRUD operations
 def create_question_type(db: Session, question_type: schemas.QuestionTypeCreate):
     db_question_type = models.QuestionType(**question_type.dict())

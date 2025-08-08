@@ -466,6 +466,49 @@ def update_pdf(pdf_id: int, pdf_update: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="PDFが見つかりません")
     return crud.update_pdf(db, pdf_id, pdf_update)
 
+@app.delete("/pdfs/{pdf_id}")
+def delete_pdf(pdf_id: int, db: Session = Depends(get_db)):
+    """
+    PDFを削除する（管理者向け機能）
+    """
+    try:
+        # PDFメタデータを取得
+        db_pdf = crud.get_pdf_by_id(db, pdf_id)
+        if not db_pdf:
+            raise HTTPException(status_code=404, detail="PDFが見つかりません")
+        
+        # ファイルパスを構築
+        pdf_path = os.path.join(UPLOAD_DIR, db_pdf.filename)
+        
+        # データベースからPDFレコードを削除
+        success = crud.delete_pdf(db, pdf_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="データベースからの削除に失敗しました")
+        
+        # 物理ファイルを削除
+        if os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+                print(f"ファイル削除成功: {pdf_path}")
+            except Exception as e:
+                print(f"ファイル削除警告: {pdf_path} - {str(e)}")
+                # ファイル削除失敗でもデータベースからは削除済みなので続行
+        
+        return {
+            "success": True,
+            "message": f"PDF '{db_pdf.filename}' が正常に削除されました",
+            "deleted_id": pdf_id,
+            "filename": db_pdf.filename
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"PDF削除エラー: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"PDF削除中にエラーが発生しました: {str(e)}")
+
 # QuestionType エンドポイント
 @app.post("/question-types/", response_model=schemas.QuestionTypeOut)
 def create_question_type(question_type: schemas.QuestionTypeCreate, db: Session = Depends(get_db)):

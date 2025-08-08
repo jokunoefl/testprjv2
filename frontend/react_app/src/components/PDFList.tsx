@@ -126,6 +126,34 @@ export const PDFList: React.FC<PDFListProps> = ({
     onPDFSelect(pdfId);
   };
 
+  const handleDeletePDF = async (pdf: PDF) => {
+    if (!window.confirm(`PDFファイル「${pdf.filename}」を削除してもよろしいですか？\n\nこの操作は取り消せません。`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/pdfs/${pdf.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(`PDFファイル「${pdf.filename}」が正常に削除されました。`);
+        // PDF一覧を再読み込み
+        await loadPDFs();
+      } else {
+        const errorData = await response.json();
+        alert(`削除に失敗しました: ${errorData.detail || 'サーバーエラー'}`);
+      }
+    } catch (error) {
+      console.error('PDF削除エラー:', error);
+      alert('削除中にエラーが発生しました。ネットワーク接続を確認してください。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleQuestionManage = (pdfId: number) => {
     const pdf = pdfs.find(pdf => pdf.id === pdfId);
     if (pdf) {
@@ -329,12 +357,31 @@ export const PDFList: React.FC<PDFListProps> = ({
                                             AI分析
                                           </button>
                                           {showAdminControls && (
-                                            <button 
-                                              className="question-manage-button"
-                                              onClick={() => handleQuestionManage(pdf.id)}
-                                            >
-                                              問題管理
-                                            </button>
+                                            <>
+                                              <button 
+                                                className="question-manage-button"
+                                                onClick={() => handleQuestionManage(pdf.id)}
+                                              >
+                                                問題管理
+                                              </button>
+                                              <button 
+                                                className="delete-button"
+                                                onClick={() => handleDeletePDF(pdf)}
+                                                style={{
+                                                  backgroundColor: '#dc3545',
+                                                  color: 'white',
+                                                  border: 'none',
+                                                  padding: '8px 16px',
+                                                  borderRadius: '4px',
+                                                  cursor: 'pointer',
+                                                  fontWeight: 'bold',
+                                                  fontSize: '14px',
+                                                  marginLeft: '8px'
+                                                }}
+                                              >
+                                                🗑️ 削除
+                                              </button>
+                                            </>
                                           )}
                                         </div>
                                       </div>
