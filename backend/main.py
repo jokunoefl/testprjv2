@@ -589,6 +589,13 @@ async def analyze_pdf_with_ai(pdf_id: int, db: Session = Depends(get_db)):
     PDFをClaudeで分析する
     """
     try:
+        # AI分析機能を一時的に無効化（PDFファイル存在チェックより前に実行）
+        return {
+            "success": False,
+            "error": "AI分析機能は現在メンテナンス中です。この機能は近日中に利用可能になる予定です。"
+        }
+        
+        # 以下は無効化されたコード
         # PDF情報を取得
         pdf = crud.get_pdf_by_id(db, pdf_id)
         if not pdf:
@@ -598,12 +605,6 @@ async def analyze_pdf_with_ai(pdf_id: int, db: Session = Depends(get_db)):
         pdf_path = os.path.join(UPLOAD_DIR, pdf.filename)
         if not os.path.exists(pdf_path):
             raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
-        
-        # AI分析機能を一時的に無効化
-        return {
-            "success": False,
-            "error": "AI分析機能は現在メンテナンス中です。この機能は近日中に利用可能になる予定です。"
-        }
         
     except HTTPException:
         raise
