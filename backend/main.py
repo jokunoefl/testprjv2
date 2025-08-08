@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
+import httpx
+from urllib.parse import urlparse
 
 # 環境設定の読み込み
 try:
@@ -409,7 +411,43 @@ async def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
                 if crawl_error:
                     print(f"クロールエラー: {crawl_error}")
                 if not downloaded_files:
-                    raise HTTPException(status_code=404, detail=f"PDFファイルのダウンロードに失敗しました: {error}")
+                    # さらにフォールバック: 直接ストリーミングで返す（保存せずに表示）
+                    print("最終フォールバック: 直接ストリーミングを試行します")
+                    try:
+                        parsed = urlparse(pdf.url)
+                        headers = {
+                            "User-Agent": (
+                                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/124.0.0.0 Safari/537.36"
+                            ),
+                            "Accept": "application/pdf,application/octet-stream,*/*;q=0.9",
+                            "Referer": f"{parsed.scheme}://{parsed.netloc}",
+                        }
+                        timeout = httpx.Timeout(60.0, connect=15.0, read=45.0)
+                        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+                            resp = await client.get(pdf.url, follow_redirects=True)
+                            resp.raise_for_status()
+                            content_type = resp.headers.get("content-type", "application/octet-stream").lower()
+                            content = resp.content
+                            if ("pdf" in content_type) or content.startswith(b"%PDF"):
+                                from fastapi.responses import Response
+                                return Response(
+                                    content=content,
+                                    media_type='application/pdf',
+                                    headers={
+                                        'Access-Control-Allow-Origin': '*',
+                                        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                                        'Access-Control-Allow-Headers': '*',
+                                        'Content-Disposition': f'inline; filename="{pdf.filename}"'
+                                    }
+                                )
+                            else:
+                                print(f"直接取得したContent-TypeがPDFではありません: {content_type}")
+                                raise HTTPException(status_code=404, detail=f"PDFファイルが取得できませんでした: Content-Type={content_type}")
+                    except Exception as stream_err:
+                        print(f"ストリーミングフォールバック失敗: {stream_err}")
+                        raise HTTPException(status_code=404, detail=f"PDFファイルのダウンロードに失敗しました: {error}")
                 # 最初のダウンロード結果を使用
                 filename = downloaded_files[0]
             
