@@ -1,4 +1,6 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError, IntegrityError
+import time
 import models, schemas
 from typing import List, Optional
 
@@ -42,32 +44,63 @@ def update_pdf(db: Session, pdf_id: int, pdf_update: dict):
         db.refresh(db_pdf)
     return db_pdf
 
+def _commit_with_retry(db: Session, max_retries: int = 5, base_sleep: float = 0.1) -> None:
+    """Commit with retries to mitigate SQLite 'database is locked' issues."""
+    attempt = 0
+    while True:
+        try:
+            db.commit()
+            return
+        except OperationalError as e:
+            message = str(e).lower()
+            if "database is locked" in message or "database is busy" in message:
+                if attempt < max_retries:
+                    sleep_for = base_sleep * (2 ** attempt)
+                    print(f"SQLite lock detected. Retrying commit in {sleep_for:.2f}s (attempt {attempt+1}/{max_retries})")
+                    time.sleep(sleep_for)
+                    attempt += 1
+                    continue
+            # Not a lock error or exceeded retries
+            raise
+
+
 def delete_pdf(db: Session, pdf_id: int) -> bool:
     """PDFレコードをデータベースから削除する。関連する質問も削除する。"""
     try:
         print(f"=== PDF削除処理開始: ID {pdf_id} ===")
-        
+
         # PDFレコードを取得
         db_pdf = db.query(models.PDF).filter(models.PDF.id == pdf_id).first()
         if not db_pdf:
             print(f"PDFが見つかりません: ID {pdf_id}")
             return False
-        
+
         print(f"PDF情報: ID {pdf_id}, ファイル名: {db_pdf.filename}")
-        
-        # まず関連する質問を削除（カスケードが効く場合は不要だが、保険として実行）
-        related_questions = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).all()
-        if related_questions:
-            print(f"関連する質問を {len(related_questions)} 件削除します...")
-            for question in related_questions:
-                db.delete(question)
-            # まず子テーブルの削除を確定
-            db.commit()
-        
-        # PDFレコードを削除
+
+        # 子テーブル（questions）を先に削除（まずはバルク、失敗時は個別フォールバック）
+        try:
+            deleted_count = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete(synchronize_session=False)
+            if deleted_count:
+                print(f"関連する質問を {deleted_count} 件バルク削除しました")
+            _commit_with_retry(db)
+        except (OperationalError, IntegrityError) as e:
+            print(f"バルク削除失敗、個別削除にフォールバックします: {str(e)}")
+            db.rollback()
+            related_questions = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).all()
+            print(f"個別削除対象: {len(related_questions)} 件")
+            for idx, question in enumerate(related_questions, 1):
+                try:
+                    db.delete(question)
+                    if idx % 50 == 0:
+                        _commit_with_retry(db)
+                except Exception as qe:
+                    print(f"質問ID {getattr(question, 'id', 'unknown')} の削除エラー: {qe}")
+            _commit_with_retry(db)
+
+        # 親PDFを削除
         print("PDFレコードを削除中...")
         db.delete(db_pdf)
-        db.commit()
+        _commit_with_retry(db)
         print(f"PDF削除完了: ID {pdf_id}")
         return True
     except Exception as e:
