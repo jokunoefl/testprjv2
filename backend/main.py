@@ -589,13 +589,13 @@ async def analyze_pdf_with_ai(pdf_id: int, db: Session = Depends(get_db)):
     PDFをClaudeで分析する
     """
     try:
-        # AI分析機能を一時的に無効化（PDFファイル存在チェックより前に実行）
-        return {
-            "success": False,
-            "error": "AI分析機能は現在メンテナンス中です。この機能は近日中に利用可能になる予定です。"
-        }
+        # ANTHROPIC_API_KEYの確認
+        if not settings.ANTHROPIC_API_KEY:
+            return {
+                "success": False,
+                "error": "AI分析機能を利用するにはANTHROPIC_API_KEYの設定が必要です。管理者にお問い合わせください。"
+            }
         
-        # 以下は無効化されたコード
         # PDF情報を取得
         pdf = crud.get_pdf_by_id(db, pdf_id)
         if not pdf:
@@ -604,7 +604,48 @@ async def analyze_pdf_with_ai(pdf_id: int, db: Session = Depends(get_db)):
         # PDFファイルパスを構築
         pdf_path = os.path.join(UPLOAD_DIR, pdf.filename)
         if not os.path.exists(pdf_path):
-            raise HTTPException(status_code=404, detail="PDFファイルが見つかりません")
+            # PDFファイルが存在しない場合、元のURLからダウンロードを試行
+            print(f"PDFファイルが見つかりません: {pdf_path}")
+            print(f"元のURLからダウンロードを試行: {pdf.url}")
+            
+            try:
+                filename, error = await pdf_utils.download_pdf_from_url(pdf.url, UPLOAD_DIR)
+                if error:
+                    return {
+                        "success": False,
+                        "error": f"PDFファイルのダウンロードに失敗しました: {error}"
+                    }
+                pdf_path = os.path.join(UPLOAD_DIR, filename)
+                print(f"ダウンロード成功: {pdf_path}")
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"PDFファイルが見つからず、ダウンロードにも失敗しました: {str(e)}"
+                }
+        
+        # AI分析を実行
+        try:
+            result = await ai_analysis.analyze_pdf_with_claude(
+                pdf_id=pdf_id,
+                pdf_path=pdf_path,
+                school=pdf.school,
+                subject=pdf.subject,
+                year=pdf.year
+            )
+            return result
+        except ImportError as e:
+            return {
+                "success": False,
+                "error": f"AI分析に必要なライブラリがインストールされていません: {str(e)}"
+            }
+        except Exception as e:
+            print(f"AI分析エラー詳細: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": f"AI分析中にエラーが発生しました: {str(e)}"
+            }
         
     except HTTPException:
         raise

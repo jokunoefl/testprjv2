@@ -19,7 +19,7 @@ COPY . .
 RUN mkdir -p uploaded_pdfs
 
 # ポートの公開
-EXPOSE 8080
+EXPOSE $PORT
 
 # アプリケーション起動
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"] 
+CMD uvicorn main:app --host 0.0.0.0 --port $PORT 
