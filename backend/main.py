@@ -397,12 +397,17 @@ async def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
     
     file_path = os.path.join(UPLOAD_DIR, pdf.filename)
     
-        # ファイルが存在しない場合、元のURLからダウンロードを試行
+    # ファイル存在チェックと詳細ログ
+    print(f"=== PDF表示要求: ID {pdf_id} ===")
+    print(f"ファイル名: {pdf.filename}")
+    print(f"ファイルパス: {file_path}")
+    print(f"ファイル存在: {os.path.exists(file_path)}")
+    print(f"URL設定: {'あり' if pdf.url else 'なし'}")
+    
+    # ファイルが存在しない場合、元のURLからダウンロードを試行
     if not os.path.exists(file_path):
-        print(f"PDFファイルが見つかりません: {file_path}")
-        print(f"元のURLからダウンロードを試行: {pdf.url}")
-        
-
+        print(f"❌ PDFファイルが見つかりません: {file_path}")
+        print(f"📥 元のURLからダウンロードを試行: {pdf.url}")
         
         # URLが未設定の場合は、代替パスを確認してから明確な404を返す
         if not pdf.url:
@@ -410,23 +415,33 @@ async def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
             alternative_paths = [
                 os.path.join("uploaded_pdfs", pdf.filename),
                 os.path.join("/app/uploaded_pdfs", pdf.filename),
-                os.path.join(".", "uploaded_pdfs", pdf.filename)
+                os.path.join(".", "uploaded_pdfs", pdf.filename),
+                os.path.join("/tmp", pdf.filename),
+                os.path.join("/var/tmp", pdf.filename)
             ]
+            
             for alt_path in alternative_paths:
                 if os.path.exists(alt_path):
-                    print(f"代替パスでファイル発見: {alt_path}")
-                    with open(alt_path, 'rb') as f:
-                        content = f.read()
-                    return Response(
-                        content=content,
-                        media_type='application/pdf',
-                        headers={
-                            'Access-Control-Allow-Origin': '*',
-                            'Access-Control-Allow-Methods': 'GET, OPTIONS',
-                            'Access-Control-Allow-Headers': '*',
-                            'Content-Disposition': f'inline; filename="{pdf.filename}"'
-                        }
-                    )
+                    print(f"✅ 代替パスでファイル発見: {alt_path}")
+                    try:
+                        with open(alt_path, 'rb') as f:
+                            content = f.read()
+                        print(f"📄 ファイル読み込み成功: {len(content)} bytes")
+                        return Response(
+                            content=content,
+                            media_type='application/pdf',
+                            headers={
+                                'Access-Control-Allow-Origin': '*',
+                                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                                'Access-Control-Allow-Headers': '*',
+                                'Content-Disposition': f'inline; filename="{pdf.filename}"'
+                            }
+                        )
+                    except Exception as e:
+                        print(f"❌ 代替パスファイル読み込みエラー: {e}")
+                        continue
+            
+            print("❌ 全ての代替パスでファイルが見つかりませんでした")
             raise HTTPException(status_code=404, detail="PDFファイルが見つからず、URLが未設定のため再取得できません。管理画面からPDFを再アップロードするか、有効なURLを設定してください。")
         
         try:
