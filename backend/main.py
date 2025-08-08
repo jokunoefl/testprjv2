@@ -403,7 +403,15 @@ async def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
             filename, error = await pdf_utils.download_pdf_from_url(pdf.url, UPLOAD_DIR)
             if error:
                 print(f"ダウンロードエラー: {error}")
-                raise HTTPException(status_code=404, detail=f"PDFファイルのダウンロードに失敗しました: {error}")
+                # URLがPDFページの場合のフォールバック: ページ内リンクをクロール
+                print("フォールバック: ページをクロールしてPDFリンクを探索します")
+                downloaded_files, crawl_error = await pdf_utils.crawl_and_download_pdfs(pdf.url, UPLOAD_DIR)
+                if crawl_error:
+                    print(f"クロールエラー: {crawl_error}")
+                if not downloaded_files:
+                    raise HTTPException(status_code=404, detail=f"PDFファイルのダウンロードに失敗しました: {error}")
+                # 最初のダウンロード結果を使用
+                filename = downloaded_files[0]
             
             # ダウンロードされたファイルを使用
             file_path = os.path.join(UPLOAD_DIR, filename)

@@ -60,13 +60,14 @@ async def download_pdf_from_url(url: str, upload_dir: str = "uploaded_pdfs") -> 
             except httpx.RequestError as e:
                 return None, f"リクエストエラー: {str(e)}"
 
-            # Content-TypeがPDFかチェック
+            # Content-TypeがPDFでなくても、実体がPDFかを魔法バイトで判定
             content_type = response.headers.get("content-type", "").lower()
             if "pdf" not in content_type:
                 logger.warning(f"Content-TypeがPDFではありません: {content_type}")
-                # Content-TypeがPDFでなくても、URLに.pdfが含まれていればダウンロードを試行
                 if not url.lower().endswith('.pdf'):
-                    return None, "URLがPDFファイルではありません"
+                    # 先頭バイトでPDFかどうかを判定
+                    if not response.content.startswith(b'%PDF'):
+                        return None, "URLがPDFファイルではない可能性があります"
 
             # ファイルサイズチェック
             content_length = response.headers.get("content-length")
