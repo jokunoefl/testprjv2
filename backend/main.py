@@ -101,11 +101,7 @@ def on_startup():
         print(f"ディレクトリ存在: {os.path.exists(UPLOAD_DIR)}")
         print(f"ディレクトリ書き込み権限: {os.access(UPLOAD_DIR, os.W_OK)}")
         
-        # ファイルシステムの永続性警告
-        if os.getenv('RENDER', '').lower() == 'true':
-            print("⚠️  WARNING: Render環境でファイルシステムは一時的です")
-            print("⚠️  PDFファイルはデプロイやスリープ時に失われる可能性があります")
-            print("⚠️  永続化には外部ストレージ（S3等）の使用を推奨します")
+
     except Exception as e:
         print(f"アップロードディレクトリ作成エラー: {e}")
         return
@@ -406,10 +402,7 @@ async def view_pdf(pdf_id: int, db: Session = Depends(get_db)):
         print(f"PDFファイルが見つかりません: {file_path}")
         print(f"元のURLからダウンロードを試行: {pdf.url}")
         
-        # Render環境でのファイル消失対策
-        if os.getenv('RENDER', '').lower() == 'true':
-            print("⚠️  Render環境: ファイルが消失している可能性があります")
-            print("⚠️  元のURLから再ダウンロードを試行します")
+
         
         # URLが未設定の場合は、代替パスを確認してから明確な404を返す
         if not pdf.url:
