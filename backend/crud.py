@@ -63,16 +63,23 @@ def delete_pdf(db: Session, pdf_id: int) -> bool:
         if related_questions:
             print("関連する質問を削除中...")
             try:
-                for i, question in enumerate(related_questions):
-                    print(f"質問 {i+1}/{len(related_questions)} を削除中...")
-                    db.delete(question)
-                print(f"{len(related_questions)}個の質問を削除しました")
+                # 一括削除を試行
+                deleted_count = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete()
+                print(f"{deleted_count}個の質問を削除しました")
             except Exception as e:
-                print(f"質問削除エラー: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                db.rollback()
-                return False
+                print(f"一括削除エラー: {str(e)}")
+                # 個別削除を試行
+                try:
+                    for i, question in enumerate(related_questions):
+                        print(f"質問 {i+1}/{len(related_questions)} を個別削除中...")
+                        db.delete(question)
+                    print(f"{len(related_questions)}個の質問を個別削除しました")
+                except Exception as e2:
+                    print(f"個別削除エラー: {str(e2)}")
+                    import traceback
+                    traceback.print_exc()
+                    db.rollback()
+                    return False
         
         # PDFレコードを削除
         print("PDFレコードを削除中...")
