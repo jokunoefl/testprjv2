@@ -481,18 +481,28 @@ def delete_pdf(pdf_id: int, db: Session = Depends(get_db)):
     PDFを削除する（管理者向け機能）
     """
     try:
+        print(f"=== PDF削除エンドポイント開始: ID {pdf_id} ===")
+        
         # PDFメタデータを取得
         db_pdf = crud.get_pdf_by_id(db, pdf_id)
         if not db_pdf:
+            print(f"PDFが見つかりません: ID {pdf_id}")
             raise HTTPException(status_code=404, detail="PDFが見つかりません")
+        
+        print(f"削除対象PDF: ID {pdf_id}, ファイル名: {db_pdf.filename}")
         
         # ファイルパスを構築
         pdf_path = os.path.join(UPLOAD_DIR, db_pdf.filename)
+        print(f"ファイルパス: {pdf_path}")
         
         # データベースからPDFレコードを削除
+        print("データベースからの削除を開始...")
         success = crud.delete_pdf(db, pdf_id)
         if not success:
+            print("データベースからの削除に失敗しました")
             raise HTTPException(status_code=500, detail="データベースからの削除に失敗しました")
+        
+        print("データベースからの削除が完了しました")
         
         # 物理ファイルを削除
         if os.path.exists(pdf_path):
@@ -502,6 +512,10 @@ def delete_pdf(pdf_id: int, db: Session = Depends(get_db)):
             except Exception as e:
                 print(f"ファイル削除警告: {pdf_path} - {str(e)}")
                 # ファイル削除失敗でもデータベースからは削除済みなので続行
+        else:
+            print(f"ファイルが存在しません: {pdf_path}")
+        
+        print(f"=== PDF削除エンドポイント完了: ID {pdf_id} ===")
         
         return {
             "success": True,

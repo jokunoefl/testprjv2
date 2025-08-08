@@ -16,7 +16,12 @@ class PDF(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # リレーションシップ
-    questions = relationship("Question", back_populates="pdf")
+    questions = relationship(
+        "Question",
+        back_populates="pdf",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 class QuestionType(Base):
     __tablename__ = "question_types"
@@ -31,7 +36,7 @@ class QuestionType(Base):
 class Question(Base):
     __tablename__ = "questions"
     id = Column(Integer, primary_key=True, index=True)
-    pdf_id = Column(Integer, ForeignKey("pdfs.id"), nullable=False)
+    pdf_id = Column(Integer, ForeignKey("pdfs.id", ondelete="CASCADE"), nullable=False)
     question_type_id = Column(Integer, ForeignKey("question_types.id"), nullable=False)
     question_number = Column(String, nullable=False)  # 問題番号（例：1, 2, 3-1, 3-2）
     question_text = Column(Text, nullable=False)  # 問題文

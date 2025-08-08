@@ -43,7 +43,7 @@ def update_pdf(db: Session, pdf_id: int, pdf_update: dict):
     return db_pdf
 
 def delete_pdf(db: Session, pdf_id: int) -> bool:
-    """PDFレコードをデータベースから削除する"""
+    """PDFレコードをデータベースから削除する。関連する質問も削除する。"""
     try:
         print(f"=== PDF削除処理開始: ID {pdf_id} ===")
         
@@ -52,57 +52,29 @@ def delete_pdf(db: Session, pdf_id: int) -> bool:
         if not db_pdf:
             print(f"PDFが見つかりません: ID {pdf_id}")
             return False
-            
+        
         print(f"PDF情報: ID {pdf_id}, ファイル名: {db_pdf.filename}")
         
-        # 外部キー制約を一時的に無効化
-        print("外部キー制約を無効化中...")
-        db.execute("PRAGMA foreign_keys=OFF")
-        
-        # 関連する質問を確認
+        # まず関連する質問を削除（カスケードが効く場合は不要だが、保険として実行）
         related_questions = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).all()
-        print(f"関連する質問数: {len(related_questions)}")
-        
-        # 関連する質問を削除
         if related_questions:
-            print("関連する質問を削除中...")
-            try:
-                deleted_count = db.query(models.Question).filter(models.Question.pdf_id == pdf_id).delete()
-                print(f"{deleted_count}個の質問を削除しました")
-            except Exception as e:
-                print(f"質問削除エラー: {str(e)}")
-                import traceback
-                traceback.print_exc()
+            print(f"関連する質問を {len(related_questions)} 件削除します...")
+            for question in related_questions:
+                db.delete(question)
+            # まず子テーブルの削除を確定
+            db.commit()
         
         # PDFレコードを削除
         print("PDFレコードを削除中...")
-        try:
-            db.delete(db_pdf)
-            db.commit()
-            print(f"PDF削除完了: ID {pdf_id}")
-            
-            # 外部キー制約を再有効化
-            db.execute("PRAGMA foreign_keys=ON")
-            return True
-        except Exception as e:
-            print(f"PDFレコード削除エラー: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            db.rollback()
-            # 外部キー制約を再有効化
-            db.execute("PRAGMA foreign_keys=ON")
-            return False
-            
+        db.delete(db_pdf)
+        db.commit()
+        print(f"PDF削除完了: ID {pdf_id}")
+        return True
     except Exception as e:
-        print(f"PDF削除全体エラー: {str(e)}")
+        print(f"PDF削除エラー: {str(e)}")
         import traceback
         traceback.print_exc()
         db.rollback()
-        # 外部キー制約を再有効化
-        try:
-            db.execute("PRAGMA foreign_keys=ON")
-        except:
-            pass
         return False
 
 # QuestionType CRUD operations

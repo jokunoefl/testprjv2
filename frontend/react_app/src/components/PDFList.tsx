@@ -133,18 +133,33 @@ export const PDFList: React.FC<PDFListProps> = ({
 
     try {
       setLoading(true);
+      console.log(`PDF削除開始: ID ${pdf.id}, ファイル名: ${pdf.filename}`);
+      
       const response = await fetch(`${process.env.REACT_APP_API_URL}/pdfs/${pdf.id}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
+
+      console.log(`削除レスポンス: ${response.status} ${response.statusText}`);
 
       if (response.ok) {
         const result = await response.json();
+        console.log('削除成功:', result);
         alert(`PDFファイル「${pdf.filename}」が正常に削除されました。`);
         // PDF一覧を再読み込み
         await loadPDFs();
       } else {
-        const errorData = await response.json();
-        alert(`削除に失敗しました: ${errorData.detail || 'サーバーエラー'}`);
+        let errorMessage = '削除に失敗しました';
+        try {
+          const errorData = await response.json();
+          errorMessage = `削除に失敗しました: ${errorData.detail || 'サーバーエラー'}`;
+        } catch (parseError) {
+          errorMessage = `削除に失敗しました: HTTP ${response.status} ${response.statusText}`;
+        }
+        console.error('削除エラー:', errorMessage);
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('PDF削除エラー:', error);
